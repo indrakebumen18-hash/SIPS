@@ -1,2 +1,2 @@
 # SIPS
-Aplikasi yang memudahkan penangan santri
+Aplikasi yang memudahkan penanganan santri
