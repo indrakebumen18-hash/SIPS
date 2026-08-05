@@ -67,6 +67,8 @@
         .brand-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--primary), #60a5fa); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3); }
         .brand-text h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
         .brand-text p { font-size: 12px; color: var(--text-muted); }
+        .theme-toggle { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background-color: var(--surface); color: var(--text-main); font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--transition); }
+        .theme-toggle:hover { background-color: var(--surface-hover); transform: scale(1.08); box-shadow: var(--shadow-sm); }
         
         /* Sidebar */
         .sidebar { grid-area: sidebar; background-color: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 24px 16px; overflow-y: auto; z-index: 10; }
@@ -161,6 +163,11 @@
         .chart-bar { width: 100%; background: linear-gradient(to top, var(--primary), #60a5fa); border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); }
         .chart-val { font-size: 11px; font-weight: 700; color: var(--text-main); position: absolute; top: -20px; }
         .chart-lbl { font-size: 10px; font-weight: 500; color: var(--text-muted); margin-top: 8px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50px; }
+        .chart-col-clickable { cursor: pointer; border-radius: 8px; transition: var(--transition); }
+        .chart-col-clickable:hover { background-color: var(--surface-hover); }
+        .chart-col-clickable:hover .chart-bar { filter: brightness(1.15); }
+        .period-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .period-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* Modals & Toasts */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; backdrop-filter: blur(2px); padding: 20px; }
@@ -225,8 +232,7 @@
                 </div>
             </div>
             <div class="header-right">
-                <!-- Theme toggle dipindah ke Pengaturan sesuai standar PWA, namun biarkan disini sbg opsi cepat -->
-                <button class="theme-toggle" id="themeToggle" aria-label="Ubah Tema" style="display:none">☀️</button>
+                <button class="theme-toggle" id="themeToggle" aria-label="Ubah Tema (Siang/Malam)" title="Ubah Tema (Siang/Malam)" onclick="ViewPengaturan.toggleTheme()">☀️</button>
             </div>
         </header>
 
@@ -295,6 +301,28 @@
                 const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
                 return d >= monday && d <= sunday;
             },
+            getMonday: (d) => { const day = d.getDay() || 7; const m = new Date(d); m.setDate(d.getDate() - day + 1); m.setHours(0,0,0,0); return m; },
+            toYMD: (d) => `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`,
+            inRange: (dateStr, start, end) => { const d = new Date(dateStr + 'T00:00:00'); return d >= start && d <= end; },
+            getWeekRange: (offset = 0) => {
+                const monday = Utils.getMonday(new Date()); monday.setDate(monday.getDate() + (offset * 7));
+                const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
+                return { start: monday, end: sunday };
+            },
+            getMonthRange: (offset = 0) => {
+                const today = new Date();
+                const base = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                const start = new Date(base.getFullYear(), base.getMonth(), 1); start.setHours(0,0,0,0);
+                const end = new Date(base.getFullYear(), base.getMonth() + 1, 0); end.setHours(23,59,59,999);
+                return { start, end };
+            },
+            getWeekOfMonth: (mondayDate) => {
+                const firstOfMonth = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), 1);
+                const firstMonday = Utils.getMonday(firstOfMonth);
+                const diffDays = Math.round((mondayDate - firstMonday) / 86400000);
+                return Math.floor(diffDays / 7) + 1;
+            },
+            monthNames: ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'],
             isThisMonth: (dateStr) => {
                 const d = new Date(dateStr), today = new Date();
                 return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
@@ -384,6 +412,7 @@
         // --- 4. BUSINESS LOGIC ---
         const AppLogic = (function() {
             const getSantriPoints = (sId, excludeId = null) => Storage.get('pelanggaran').reduce((sum, p) => (p.santriId === sId && p.id !== excludeId) ? sum + (parseInt(p.poin)||0) : sum, 0);
+            const getSantriPointsInRange = (sId, start, end) => Storage.get('pelanggaran').reduce((sum, p) => (p.santriId === sId && Utils.inRange(p.tanggal, start, end)) ? sum + (parseInt(p.poin)||0) : sum, 0);
             
             const getPenanganan = (pts) => {
                 const p = Storage.get('penanganan').sort((a,b) => b.minPoin - a.minPoin).find(x => pts >= x.minPoin);
@@ -421,7 +450,7 @@
                 `);
             };
 
-            return { getSantriPoints, getPenanganan, showSantriDetail };
+            return { getSantriPoints, getSantriPointsInRange, getPenanganan, showSantriDetail };
         })();
 
         // --- 5. VIEWS MODULES ---
@@ -448,12 +477,12 @@
                 const maxDay = Math.max(...Utils.getPast7Days().map(d => pl.filter(p => p.tanggal === d.date).length), 1);
                 const chartHari = Utils.getPast7Days().map(d => {
                     const count = pl.filter(p => p.tanggal === d.date).length;
-                    return `<div class="chart-col"><div class="chart-val">${count||''}</div><div class="chart-bar" style="height:${(count/maxDay)*100}%;"></div><div class="chart-lbl">${d.label}</div></div>`;
+                    return `<div class="chart-col chart-col-clickable" onclick="ViewDashboard.showDayDetail('${d.date}')" title="Klik untuk lihat detail"><div class="chart-val">${count||''}</div><div class="chart-bar" style="height:${(count/maxDay)*100}%;"></div><div class="chart-lbl">${d.label}</div></div>`;
                 }).join('');
 
                 const sortedCats = Object.keys(catMap).sort((a,b) => catMap[b] - catMap[a]).slice(0, 5);
                 const maxCat = Math.max(...sortedCats.map(c => catMap[c]), 1);
-                const chartKategori = sortedCats.length > 0 ? sortedCats.map(c => `<div class="chart-col"><div class="chart-val">${catMap[c]}</div><div class="chart-bar" style="height:${(catMap[c]/maxCat)*100}%;"></div><div class="chart-lbl" title="${c}">${c.substring(0,5)}..</div></div>`).join('') : '<div style="width:100%;text-align:center;color:var(--text-muted);font-size:12px;margin-bottom:10px">Belum ada data</div>';
+                const chartKategori = sortedCats.length > 0 ? sortedCats.map(c => `<div class="chart-col chart-col-clickable" onclick="ViewDashboard.showCategoryDetail('${c.replace(/'/g,"\\'")}')" title="Klik untuk lihat detail"><div class="chart-val">${catMap[c]}</div><div class="chart-bar" style="height:${(catMap[c]/maxCat)*100}%;"></div><div class="chart-lbl" title="${c}">${c.substring(0,5)}..</div></div>`).join('') : '<div style="width:100%;text-align:center;color:var(--text-muted);font-size:12px;margin-bottom:10px">Belum ada data</div>';
 
                 document.getElementById('mainContent').innerHTML = `
                     <div class="page-header"><h2 class="page-title">Dashboard</h2><p class="page-subtitle">Informasi pembinaan santri terpusat & Real-Time.</p></div>
@@ -483,6 +512,39 @@
                         <div class="card"><div style="padding:16px 24px; border-bottom:1px solid var(--border); font-weight:600; font-size:14px">Top 5 Kategori (Minggu Ini)</div><div class="css-chart">${chartKategori}</div></div>
                     </div>
                 `;
+            },
+            showDayDetail: (dateStr) => {
+                const items = Storage.get('pelanggaran').filter(p => p.tanggal === dateStr);
+                const sMap = {}; Storage.get('santri').forEach(s => sMap[s.id] = s.nama);
+                const rows = items.map(p => `<tr><td>${Utils.escapeHTML(sMap[p.santriId] || 'Tidak diketahui')}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>${p.poin}</strong></td></tr>`).join('');
+                const tbl = items.length === 0
+                    ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Tidak ada pelanggaran pada tanggal ini.</p></div>'
+                    : `<table class="table" style="font-size:13px"><thead><tr><th>Santri</th><th>Pelanggaran</th><th>Poin</th></tr></thead><tbody>${rows}</tbody></table>`;
+                UI.openModal(`
+                    <div class="modal-header"><div class="modal-title">Pelanggaran • ${Utils.formatDate(dateStr)}</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
+                    <div class="modal-body">
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Total <strong>${items.length}</strong> kasus pada hari ini.</p>
+                        <div class="card table-container" style="box-shadow:none; border:1px solid var(--border)">${tbl}</div>
+                    </div>
+                `);
+            },
+            showCategoryDetail: (kategoriNama) => {
+                const items = Storage.get('pelanggaran').filter(p => Utils.isThisWeek(p.tanggal) && p.kategoriNama === kategoriNama);
+                const sMap = {}; Storage.get('santri').forEach(s => sMap[s.id] = s.nama);
+                const counts = {};
+                items.forEach(p => { counts[p.santriId] = (counts[p.santriId] || 0) + 1; });
+                const arr = Object.keys(counts).map(id => ({ nama: sMap[id] || 'Tidak diketahui', jml: counts[id] })).sort((a,b) => b.jml - a.jml);
+                const rows = arr.map(a => `<tr><td>${Utils.escapeHTML(a.nama)}</td><td><strong>${a.jml}</strong> kali</td></tr>`).join('');
+                const tbl = arr.length === 0
+                    ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Tidak ada data pada minggu ini.</p></div>'
+                    : `<table class="table" style="font-size:13px"><thead><tr><th>Santri</th><th>Jumlah</th></tr></thead><tbody>${rows}</tbody></table>`;
+                UI.openModal(`
+                    <div class="modal-header"><div class="modal-title">${Utils.escapeHTML(kategoriNama)} • Minggu Ini</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
+                    <div class="modal-body">
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Total <strong>${items.length}</strong> kasus dari <strong>${arr.length}</strong> santri.</p>
+                        <div class="card table-container" style="box-shadow:none; border:1px solid var(--border)">${tbl}</div>
+                    </div>
+                `);
             }
         };
 
@@ -533,7 +595,7 @@
             render: () => {
                 const data = Storage.get('santri').sort((a, b) => a.nama.localeCompare(b.nama));
                 const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
-                const tbody = data.map(i => `<tr><td data-label="Nama Santri"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Kelas">${Utils.escapeHTML(kMap[i.kelasId]||'-')}</td><td data-label="Status"><span class="badge ${i.status==='Aktif'?'green':'gray'}">${i.status}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterSantri.form('${i.id}')`, `MasterSantri.del('${i.id}')`)}</td></tr>`).join('');
+                const tbody = data.map(i => `<tr><td data-label="Nama Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td><td data-label="Kelas">${Utils.escapeHTML(kMap[i.kelasId]||'-')}</td><td data-label="Status"><span class="badge ${i.status==='Aktif'?'green':'gray'}">${i.status}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterSantri.form('${i.id}')`, `MasterSantri.del('${i.id}')`)}</td></tr>`).join('');
                 const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Status</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Silakan tambahkan data santri baru.');
                 CrudModule.renderTable('Santri', 'Kelola data induk santri.', 'tSantri', html, "MasterSantri.form()");
                 document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tSantri tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
@@ -763,49 +825,89 @@
         };
 
         const ViewRekap = {
-            tab: 'Minggu Ini',
+            tab: 'Mingguan',
+            weekOffset: 0,
+            monthOffset: 0,
             render: () => {
                 document.getElementById('mainContent').innerHTML = `
-                    <div class="page-header"><h2 class="page-title">Rekapitulasi</h2><p class="page-subtitle">Kalkulasi otomatis berdasarkan periode.</p></div>
-                    <div class="tabs">${['Hari Ini', 'Minggu Ini', 'Bulan Ini', 'Semua Data'].map(t => `<button class="tab-btn ${ViewRekap.tab === t ? 'active' : ''}" onclick="ViewRekap.setTab('${t}')">${t}</button>`).join('')}</div>
+                    <div class="page-header"><h2 class="page-title">Rekapitulasi</h2><p class="page-subtitle">Rekap mingguan otomatis mulai Senin & terpisah setiap pekan (reset tiap Minggu malam); rekap bulanan otomatis terpisah tiap bulan.</p></div>
+                    <div class="tabs">${['Harian', 'Mingguan', 'Bulanan', 'Semua Data'].map(t => `<button class="tab-btn ${ViewRekap.tab === t ? 'active' : ''}" onclick="ViewRekap.setTab('${t}')">${t}</button>`).join('')}</div>
+                    ${ViewRekap.renderPeriodNav()}
                     <div class="toolbar"><div class="toolbar-left">
                         <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="rSch" class="search-input" placeholder="Cari santri..."></div>
-                        <select id="rSrt" class="filter-select"><option value="p_desc">Poin Tertinggi</option><option value="p_asc">Poin Terendah</option></select>
+                        <select id="rSrt" class="filter-select"><option value="p_desc">Poin Periode Tertinggi</option><option value="p_asc">Poin Periode Terendah</option></select>
                     </div></div>
                     <div id="tblRekapWrapper"></div>
                 `;
                 ViewRekap.loadTable();
                 ['rSch','rSrt'].forEach(id => document.getElementById(id).addEventListener('input', ViewRekap.loadTable));
             },
-            setTab: (t) => { ViewRekap.tab = t; Views.load('rekap'); },
+            setTab: (t) => { ViewRekap.tab = t; ViewRekap.weekOffset = 0; ViewRekap.monthOffset = 0; Views.load('rekap'); },
+            navPeriod: (dir) => {
+                if(ViewRekap.tab === 'Mingguan') { if(ViewRekap.weekOffset + dir <= 0) ViewRekap.weekOffset += dir; }
+                else if(ViewRekap.tab === 'Bulanan') { if(ViewRekap.monthOffset + dir <= 0) ViewRekap.monthOffset += dir; }
+                Views.load('rekap');
+            },
+            getRange: () => {
+                if(ViewRekap.tab === 'Harian') { const s = new Date(); s.setHours(0,0,0,0); const e = new Date(); e.setHours(23,59,59,999); return { start: s, end: e }; }
+                if(ViewRekap.tab === 'Mingguan') return Utils.getWeekRange(ViewRekap.weekOffset);
+                if(ViewRekap.tab === 'Bulanan') return Utils.getMonthRange(ViewRekap.monthOffset);
+                return null; // Semua Data
+            },
+            renderPeriodNav: () => {
+                if(ViewRekap.tab === 'Mingguan') {
+                    const { start, end } = Utils.getWeekRange(ViewRekap.weekOffset);
+                    const weekNum = Utils.getWeekOfMonth(start);
+                    const isCurrent = ViewRekap.weekOffset >= 0;
+                    return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                        <button class="btn btn-outline period-nav-btn" onclick="ViewRekap.navPeriod(-1)">◀ Minggu Sebelumnya</button>
+                        <div style="text-align:center">
+                            <div style="font-weight:700">Minggu ke-${weekNum} • ${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekap.weekOffset===0?' (Berjalan)':''}</div>
+                            <div style="font-size:12px;color:var(--text-muted)">${Utils.formatDate(Utils.toYMD(start))} - ${Utils.formatDate(Utils.toYMD(end))}</div>
+                        </div>
+                        <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekap.navPeriod(1)">Minggu Berikutnya ▶</button>
+                    </div>`;
+                }
+                if(ViewRekap.tab === 'Bulanan') {
+                    const { start } = Utils.getMonthRange(ViewRekap.monthOffset);
+                    const isCurrent = ViewRekap.monthOffset >= 0;
+                    return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                        <button class="btn btn-outline period-nav-btn" onclick="ViewRekap.navPeriod(-1)">◀ Bulan Sebelumnya</button>
+                        <div style="font-weight:700">${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekap.monthOffset===0?' (Berjalan)':''}</div>
+                        <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekap.navPeriod(1)">Bulan Berikutnya ▶</button>
+                    </div>`;
+                }
+                return '';
+            },
             loadTable: () => {
                 const q = document.getElementById('rSch').value.toLowerCase(), srt = document.getElementById('rSrt').value;
                 const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
                 const pl = Storage.get('pelanggaran');
-                
-                let plFilter = pl;
-                if(ViewRekap.tab === 'Hari Ini') plFilter = pl.filter(p => Utils.isToday(p.tanggal));
-                else if(ViewRekap.tab === 'Minggu Ini') plFilter = pl.filter(p => Utils.isThisWeek(p.tanggal));
-                else if(ViewRekap.tab === 'Bulan Ini') plFilter = pl.filter(p => Utils.isThisMonth(p.tanggal));
+                const range = ViewRekap.getRange();
 
                 let rData = [];
                 Storage.get('santri').filter(s => s.status === 'Aktif' && s.nama.toLowerCase().includes(q)).forEach(s => {
-                    const jml = plFilter.filter(p => p.santriId === s.id).length;
+                    const plPeriode = range ? pl.filter(p => p.santriId === s.id && Utils.inRange(p.tanggal, range.start, range.end)) : pl.filter(p => p.santriId === s.id);
+                    const jml = plPeriode.length;
                     if(ViewRekap.tab !== 'Semua Data' && jml === 0) return;
-                    const tPts = AppLogic.getSantriPoints(s.id), pen = AppLogic.getPenanganan(tPts);
-                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', jml, pts: tPts, pen });
+                    const periodePts = plPeriode.reduce((sum,p) => sum + (parseInt(p.poin)||0), 0);
+                    const totalPts = AppLogic.getSantriPoints(s.id), pen = AppLogic.getPenanganan(totalPts);
+                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', jml, periodePts, totalPts, pen });
                 });
 
-                rData.sort((a,b) => srt === 'p_desc' ? b.pts - a.pts : a.pts - b.pts);
+                rData.sort((a,b) => srt === 'p_desc' ? b.periodePts - a.periodePts : a.periodePts - b.periodePts);
                 const w = document.getElementById('tblRekapWrapper');
-                if(!rData.length) return w.innerHTML = CrudModule.emptyState(`Tidak ada data untuk ${ViewRekap.tab}.`);
+                if(!rData.length) return w.innerHTML = CrudModule.emptyState(`Tidak ada data untuk periode ${ViewRekap.tab}.`);
 
                 const rows = rData.map(i => `<tr>
                     <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td>
-                    <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td><td data-label="Jumlah"><strong>${i.jml}</strong> kasus</td>
-                    <td data-label="Total"><strong>${i.pts}</strong></td><td data-label="Status"><span class="badge ${Utils.colorMap[i.pen.warna]||'gray'}">${i.pen.nama}</span></td>
+                    <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td>
+                    <td data-label="Kasus (Periode)"><strong>${i.jml}</strong> kasus</td>
+                    <td data-label="Poin (Periode)"><strong>${i.periodePts}</strong></td>
+                    <td data-label="Total Poin">${i.totalPts}</td>
+                    <td data-label="Status"><span class="badge ${Utils.colorMap[i.pen.warna]||'gray'}">${i.pen.nama}</span></td>
                 </tr>`).join('');
-                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Plg (Periode)</th><th>Poin (All)</th><th>Level/Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Kasus (Periode)</th><th>Poin (Periode)</th><th>Total Poin</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
             }
         };
 
@@ -818,12 +920,12 @@
                     
                     <div class="card card-body" style="max-width: 600px; margin-bottom: 24px">
                         <h3 style="font-size: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Tampilan (UI)</h3>
-                        <div class="form-group">
-                            <label class="form-label">Tema Aplikasi</label>
-                            <select class="form-control" onchange="ViewPengaturan.setTheme(this.value)">
-                                <option value="light" ${t==='light'?'selected':''}>Terang (Light Mode)</option>
-                                <option value="dark" ${t==='dark'?'selected':''}>Gelap (Dark Mode)</option>
-                            </select>
+                        <div style="display:flex; align-items:center; gap:16px;">
+                            <button class="theme-toggle" style="width:48px;height:48px;font-size:20px" onclick="ViewPengaturan.toggleTheme()">${t==='dark'?'🌙':'☀️'}</button>
+                            <div>
+                                <div style="font-weight:600; font-size:14px">Tema saat ini: ${t==='dark'?'Gelap (Dark Mode)':'Terang (Light Mode)'}</div>
+                                <p style="font-size:13px; color:var(--text-muted); margin-top:4px">Ganti tema kapan saja lewat ikon ☀️/🌙 di pojok kanan atas halaman.</p>
+                            </div>
                         </div>
                     </div>
 
@@ -839,7 +941,9 @@
                     </div>
                 `;
             },
-            setTheme: (t) => { document.documentElement.setAttribute('data-theme', t); localStorage.setItem('sips_theme', t); UI.showToast('Tema diperbarui.'); },
+            setTheme: (t) => { document.documentElement.setAttribute('data-theme', t); localStorage.setItem('sips_theme', t); ViewPengaturan.updateThemeIcon(); UI.showToast(t === 'dark' ? 'Mode gelap diaktifkan.' : 'Mode terang diaktifkan.'); },
+            toggleTheme: () => { const cur = localStorage.getItem('sips_theme') || 'light'; ViewPengaturan.setTheme(cur === 'light' ? 'dark' : 'light'); if(Views.getActive() === 'pengaturan') ViewPengaturan.render(); },
+            updateThemeIcon: () => { const t = localStorage.getItem('sips_theme') || 'light'; const btn = document.getElementById('themeToggle'); if(btn) btn.textContent = t === 'dark' ? '🌙' : '☀️'; },
             backup: () => {
                 const data = {}; Object.keys(localStorage).forEach(k => { if(k.startsWith('sips_')) data[k] = localStorage.getItem(k); });
                 const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
@@ -886,6 +990,7 @@
             
             // Apply Theme
             const t = localStorage.getItem('sips_theme') || 'light'; document.documentElement.setAttribute('data-theme', t);
+            ViewPengaturan.updateThemeIcon();
 
             // Register Restore Event
             document.getElementById('restoreFileInput').addEventListener('change', ViewPengaturan.handleRestore);
