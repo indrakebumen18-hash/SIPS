@@ -107,6 +107,22 @@
         .btn-primary:hover { background-color: var(--primary-hover); }
         .btn-danger { background-color: var(--danger); color: white; }
         .btn-danger:hover { background-color: var(--danger-hover); }
+        .toolbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .rowChk, .chkAll { width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary); }
+        .btn-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; margin-bottom: 10px; }
+        .btn-back:hover { color: var(--primary); }
+        .pagination { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 20px; flex-wrap: wrap; }
+        .page-btn { min-width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .page-btn:hover:not(:disabled) { background: var(--surface-hover); }
+        .page-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        @media print {
+            .header, .sidebar, .sidebar-overlay, .toolbar, .tabs, .period-nav, .btn-back, .pagination, #toast-container, .modal-overlay, .btn-add-desktop { display: none !important; }
+            .app-container { display: block !important; }
+            .main-content { padding: 0 !important; }
+            body { background: #fff !important; }
+            .card, .table-container { box-shadow: none !important; border: 1px solid #ccc !important; }
+        }
         .btn-outline { background-color: transparent; border: 1px solid var(--border); color: var(--text-main); }
         .btn-outline:hover { background-color: var(--surface-hover); }
         .btn-icon { padding: 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; transition: var(--transition); }
@@ -333,15 +349,19 @@
                     return { date: `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`, label: ['Min','Sen','Sel','Rab','Kam','Jum','Sab'][d.getDay()] };
                 });
             },
-            colorMap: { 'Hijau': 'green', 'Kuning': 'yellow', 'Oranye': 'orange', 'Merah': 'red' }
+            colorMap: { 'Hijau': 'green', 'Kuning': 'yellow', 'Oranye': 'orange', 'Merah': 'red' },
+            rankWarna: { 'Hijau': 1, 'Kuning': 2, 'Oranye': 3, 'Merah': 4 }
         };
 
         // --- 2. STORAGE MANAGEMENT (AUTO SAVE) ---
         const Storage = (function() {
-            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], pengaturan: { tema: 'light' } };
+            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], pengaturan: { tema: 'light', periodeMulai: null } };
             
             const init = () => {
                 Object.keys(SCHEMA).forEach(k => { if (!localStorage.getItem(`sips_${k}`)) set(k, SCHEMA[k]); });
+                // Migrasi ringan: pastikan field baru pada pengaturan tetap ada walau instalasi lama sudah punya data
+                const pengaturan = get('pengaturan');
+                if(pengaturan.periodeMulai === undefined) { pengaturan.periodeMulai = null; set('pengaturan', pengaturan); }
             };
             const get = (t) => JSON.parse(localStorage.getItem(`sips_${t}`)) || (Array.isArray(SCHEMA[t]) ? [] : {});
             const set = (t, d) => localStorage.setItem(`sips_${t}`, JSON.stringify(d)); // Real-time save
@@ -361,8 +381,9 @@
                 if (idx !== -1) { tableData[idx] = { ...tableData[idx], ...data }; set(t, tableData); }
             };
             const remove = (t, id) => set(t, get(t).filter(i => i.id !== id));
+            const removeMany = (t, ids) => { const idSet = new Set(ids); set(t, get(t).filter(i => !idSet.has(i.id))); };
 
-            return { init, get, set, insert, update, remove, getById };
+            return { init, get, set, insert, update, remove, removeMany, getById };
         })();
 
         // --- 3. UI, MODAL & TOAST ---
@@ -411,7 +432,14 @@
 
         // --- 4. BUSINESS LOGIC ---
         const AppLogic = (function() {
-            const getSantriPoints = (sId, excludeId = null) => Storage.get('pelanggaran').reduce((sum, p) => (p.santriId === sId && p.id !== excludeId) ? sum + (parseInt(p.poin)||0) : sum, 0);
+            const getSantriPoints = (sId, excludeId = null) => {
+                const periodeMulai = Storage.get('pengaturan').periodeMulai;
+                return Storage.get('pelanggaran').reduce((sum, p) => {
+                    if(p.santriId !== sId || p.id === excludeId) return sum;
+                    if(periodeMulai && p.tanggal < periodeMulai) return sum; // di luar periode aktif, tidak dihitung ke total (riwayat tetap tersimpan)
+                    return sum + (parseInt(p.poin)||0);
+                }, 0);
+            };
             const getSantriPointsInRange = (sId, start, end) => Storage.get('pelanggaran').reduce((sum, p) => (p.santriId === sId && Utils.inRange(p.tanggal, start, end)) ? sum + (parseInt(p.poin)||0) : sum, 0);
             
             const getPenanganan = (pts) => {
@@ -450,8 +478,30 @@
                 `);
             };
 
-            return { getSantriPoints, getSantriPointsInRange, getPenanganan, showSantriDetail };
+            const showEskalasiAlert = (namaSantri, pen) => {
+                UI.confirmDialog(
+                    '⚠️ Eskalasi Level Penanganan',
+                    `<strong>${Utils.escapeHTML(namaSantri)}</strong> baru saja naik status ke <span class="badge ${Utils.colorMap[pen.warna]||'gray'}">${pen.nama}</span>. Segera tindak lanjuti santri ini.`,
+                    'Oke, Dicatat', 'btn-primary', () => {}
+                );
+            };
+
+            return { getSantriPoints, getSantriPointsInRange, getPenanganan, showSantriDetail, showEskalasiAlert };
         })();
+
+        // --- 4b. EXPORT UTILITY (CSV/Excel & Print-to-PDF) ---
+        const ExportUtil = {
+            toCSV: (filename, headers, rows) => {
+                const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+                const lines = [headers.map(esc).join(',')].concat(rows.map(r => r.map(esc).join(',')));
+                const csv = '\uFEFF' + lines.join('\r\n'); // BOM agar Excel membaca UTF-8 dengan benar
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        };
 
         // --- 5. VIEWS MODULES ---
 
@@ -555,22 +605,66 @@
                     <div class="page-header"><h2 class="page-title">${title}</h2><p class="page-subtitle">${subtitle}</p></div>
                     <div class="toolbar">
                         <div class="toolbar-left"><div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="searchData" class="search-input" placeholder="Cari data..."></div></div>
-                        <button class="btn btn-primary btn-add-desktop" onclick="${onAdd}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Tambah</span></button>
+                        <div class="toolbar-right">
+                            <button class="btn btn-danger" id="btnBulkDelete" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Hapus Terpilih (<span id="bulkCount">0</span>)</button>
+                            <button class="btn btn-primary btn-add-desktop" onclick="${onAdd}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Tambah</span></button>
+                        </div>
                     </div>
                     <div id="${tableId}">${tableHtml}</div>
                 `;
             },
             emptyState: (msg) => `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg></div><h3 class="empty-title">Belum ada data</h3><p class="empty-desc">${msg}</p></div>`,
-            btnAction: (editFn, delFn) => `<div class="actions"><button class="btn-icon" onclick="${editFn}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button class="btn-icon" style="color:var(--danger)" onclick="${delFn}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></div>`
+            btnAction: (editFn, delFn) => `<div class="actions"><button class="btn-icon" onclick="${editFn}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button class="btn-icon" style="color:var(--danger)" onclick="${delFn}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></div>`,
+            // Hapus 1 baris dari DOM tanpa render ulang seluruh halaman (mempertahankan filter/search yang sedang aktif)
+            fadeRemoveRow: (id, wrapperId, emptyMsg) => {
+                const row = document.querySelector(`tr[data-id="${id}"]`);
+                const wrap = document.getElementById(wrapperId);
+                if(!row) return;
+                row.style.transition = 'opacity .25s ease, transform .25s ease';
+                row.style.opacity = '0'; row.style.transform = 'translateX(12px)';
+                setTimeout(() => {
+                    row.remove();
+                    if(wrap && !wrap.querySelector('tbody tr')) wrap.innerHTML = CrudModule.emptyState(emptyMsg);
+                }, 250);
+            },
+            // Pasang logic Select All + tombol "Hapus Terpilih" (Bulk Delete) untuk sebuah tabel
+            initBulkDelete: (wrapperId, storeKey, rerenderFn) => {
+                const wrap = document.getElementById(wrapperId);
+                const bar = document.getElementById('btnBulkDelete');
+                const countLbl = document.getElementById('bulkCount');
+                if(!wrap || !bar) return;
+                const allChk = wrap.querySelector('.chkAll');
+                const rowChks = () => wrap.querySelectorAll('.rowChk');
+                const refresh = () => {
+                    const checked = wrap.querySelectorAll('.rowChk:checked');
+                    bar.style.display = checked.length ? 'inline-flex' : 'none';
+                    if(countLbl) countLbl.textContent = checked.length;
+                    if(allChk) allChk.checked = rowChks().length > 0 && checked.length === rowChks().length;
+                };
+                wrap.onchange = (e) => { if(e.target.classList.contains('rowChk')) refresh(); };
+                if(allChk) allChk.onchange = (e) => { rowChks().forEach(c => c.checked = e.target.checked); refresh(); };
+                bar.onclick = () => {
+                    const ids = Array.from(wrap.querySelectorAll('.rowChk:checked')).map(c => c.dataset.id);
+                    if(!ids.length) return;
+                    UI.confirmDialog('Hapus Data Terpilih', `Yakin ingin menghapus <strong>${ids.length}</strong> data terpilih? Tindakan ini tidak dapat dibatalkan.`, 'Hapus Semua', 'btn-danger', () => {
+                        Storage.removeMany(storeKey, ids);
+                        UI.showToast(`${ids.length} data berhasil dihapus`);
+                        ids.forEach(id => { const r = wrap.querySelector(`tr[data-id="${id}"]`); if(r) { r.style.transition='opacity .2s'; r.style.opacity='0'; } });
+                        setTimeout(rerenderFn, 200); // re-sync tabel (pagination/counter), filter & pencarian tetap dipertahankan
+                    });
+                };
+                refresh();
+            }
         };
 
         const MasterKelas = {
             render: () => {
                 const data = Storage.get('kelas').sort((a, b) => a.nama.localeCompare(b.nama));
-                const tbody = data.map(i => `<tr><td data-label="Nama Kelas"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Aksi">${CrudModule.btnAction(`MasterKelas.form('${i.id}')`, `MasterKelas.del('${i.id}')`)}</td></tr>`).join('');
-                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th>Nama Kelas</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Silakan tambahkan data kelas baru.');
+                const tbody = data.map(i => `<tr data-id="${i.id}"><td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${i.id}"></td><td data-label="Nama Kelas"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Aksi">${CrudModule.btnAction(`MasterKelas.form('${i.id}')`, `MasterKelas.del('${i.id}')`)}</td></tr>`).join('');
+                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Nama Kelas</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Silakan tambahkan data kelas baru.');
                 CrudModule.renderTable('Kelas', 'Kelola data kelas.', 'tKelas', html, "MasterKelas.form()");
                 document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tKelas tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
+                CrudModule.initBulkDelete('tKelas', 'kelas', MasterKelas.render);
             },
             form: (id = null) => {
                 const d = id ? Storage.getById('kelas', id) : { nama: '' };
@@ -588,17 +682,18 @@
                 if(id) { Storage.update('kelas', id, {nama}); UI.showToast('Data diubah'); } else { Storage.insert('kelas', {nama}); UI.showToast('Data ditambahkan'); }
                 UI.closeModal(); MasterKelas.render();
             },
-            del: (id) => UI.confirmDialog('Hapus Data', 'Yakin menghapus kelas ini?', 'Hapus', 'btn-danger', () => { Storage.remove('kelas', id); UI.showToast('Data dihapus'); MasterKelas.render(); })
+            del: (id) => UI.confirmDialog('Hapus Data', 'Yakin menghapus kelas ini?', 'Hapus', 'btn-danger', () => { Storage.remove('kelas', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tKelas', 'Silakan tambahkan data kelas baru.'); })
         };
 
         const MasterSantri = {
             render: () => {
                 const data = Storage.get('santri').sort((a, b) => a.nama.localeCompare(b.nama));
                 const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
-                const tbody = data.map(i => `<tr><td data-label="Nama Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td><td data-label="Kelas">${Utils.escapeHTML(kMap[i.kelasId]||'-')}</td><td data-label="Status"><span class="badge ${i.status==='Aktif'?'green':'gray'}">${i.status}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterSantri.form('${i.id}')`, `MasterSantri.del('${i.id}')`)}</td></tr>`).join('');
-                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Status</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Silakan tambahkan data santri baru.');
+                const tbody = data.map(i => `<tr data-id="${i.id}"><td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${i.id}"></td><td data-label="Nama Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td><td data-label="Kelas">${Utils.escapeHTML(kMap[i.kelasId]||'-')}</td><td data-label="Status"><span class="badge ${i.status==='Aktif'?'green':'gray'}">${i.status}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterSantri.form('${i.id}')`, `MasterSantri.del('${i.id}')`)}</td></tr>`).join('');
+                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Nama Santri</th><th>Kelas</th><th>Status</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Silakan tambahkan data santri baru.');
                 CrudModule.renderTable('Santri', 'Kelola data induk santri.', 'tSantri', html, "MasterSantri.form()");
                 document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tSantri tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
+                CrudModule.initBulkDelete('tSantri', 'santri', MasterSantri.render);
             },
             form: (id = null) => {
                 const kelas = Storage.get('kelas'); if(kelas.length===0) return UI.showToast('Isi data kelas terlebih dahulu.', 'error');
@@ -621,17 +716,18 @@
                 if(id) { Storage.update('santri', id, d); UI.showToast('Data diubah'); } else { Storage.insert('santri', d); UI.showToast('Data ditambahkan'); }
                 UI.closeModal(); MasterSantri.render();
             },
-            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus santri ini?', 'Hapus', 'btn-danger', () => { Storage.remove('santri', id); UI.showToast('Data dihapus'); MasterSantri.render(); })
+            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus santri ini?', 'Hapus', 'btn-danger', () => { Storage.remove('santri', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tSantri', 'Silakan tambahkan data santri baru.'); })
         };
 
         const MasterKategori = {
             render: () => {
                 const data = Storage.get('kategori').sort((a,b) => b.poin - a.poin);
                 const colMap = { 'Ibadah':'green', 'Disiplin':'orange', 'Kebersihan':'yellow', 'Akhlak':'red', 'Lainnya':'gray' };
-                const tbody = data.map(i => `<tr><td data-label="Pelanggaran"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Kelompok"><span class="badge ${colMap[i.kelompok]||'gray'}">${i.kelompok}</span></td><td data-label="Poin"><strong>${i.poin}</strong></td><td data-label="Aksi">${CrudModule.btnAction(`MasterKategori.form('${i.id}')`, `MasterKategori.del('${i.id}')`)}</td></tr>`).join('');
-                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th>Pelanggaran</th><th>Kelompok</th><th>Poin</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Tambahkan kategori pelanggaran.');
+                const tbody = data.map(i => `<tr data-id="${i.id}"><td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${i.id}"></td><td data-label="Pelanggaran"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Kelompok"><span class="badge ${colMap[i.kelompok]||'gray'}">${i.kelompok}</span></td><td data-label="Poin"><strong>${i.poin}</strong></td><td data-label="Aksi">${CrudModule.btnAction(`MasterKategori.form('${i.id}')`, `MasterKategori.del('${i.id}')`)}</td></tr>`).join('');
+                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Pelanggaran</th><th>Kelompok</th><th>Poin</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Tambahkan kategori pelanggaran.');
                 CrudModule.renderTable('Kategori', 'Kelola pelanggaran dan poin.', 'tKategori', html, "MasterKategori.form()");
                 document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tKategori tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
+                CrudModule.initBulkDelete('tKategori', 'kategori', MasterKategori.render);
             },
             form: (id = null) => {
                 const d = id ? Storage.getById('kategori', id) : { nama: '', kelompok: 'Disiplin', poin: '' };
@@ -655,16 +751,17 @@
                 if(id) { Storage.update('kategori', id, d); UI.showToast('Data diubah'); } else { Storage.insert('kategori', d); UI.showToast('Data ditambahkan'); }
                 UI.closeModal(); MasterKategori.render();
             },
-            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus kategori ini?', 'Hapus', 'btn-danger', () => { Storage.remove('kategori', id); UI.showToast('Data dihapus'); MasterKategori.render(); })
+            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus kategori ini?', 'Hapus', 'btn-danger', () => { Storage.remove('kategori', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tKategori', 'Tambahkan kategori pelanggaran.'); })
         };
 
         const MasterPenanganan = {
             render: () => {
                 const data = Storage.get('penanganan').sort((a,b) => a.minPoin - b.minPoin);
-                const tbody = data.map(i => `<tr><td data-label="Penanganan"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Range">${i.minPoin} - ${i.maxPoin} Pts</td><td data-label="Warna"><span class="badge ${Utils.colorMap[i.warna]||'gray'}">${i.warna}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterPenanganan.form('${i.id}')`, `MasterPenanganan.del('${i.id}')`)}</td></tr>`).join('');
-                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th>Penanganan</th><th>Range Poin</th><th>Label</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Tambahkan master penanganan.');
+                const tbody = data.map(i => `<tr data-id="${i.id}"><td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${i.id}"></td><td data-label="Penanganan"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Range">${i.minPoin} - ${i.maxPoin} Pts</td><td data-label="Warna"><span class="badge ${Utils.colorMap[i.warna]||'gray'}">${i.warna}</span></td><td data-label="Aksi">${CrudModule.btnAction(`MasterPenanganan.form('${i.id}')`, `MasterPenanganan.del('${i.id}')`)}</td></tr>`).join('');
+                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Penanganan</th><th>Range Poin</th><th>Label</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Tambahkan master penanganan.');
                 CrudModule.renderTable('Penanganan', 'Kelola tingkat penanganan.', 'tPenanganan', html, "MasterPenanganan.form()");
                 document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tPenanganan tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
+                CrudModule.initBulkDelete('tPenanganan', 'penanganan', MasterPenanganan.render);
             },
             form: (id = null) => {
                 const d = id ? Storage.getById('penanganan', id) : { nama:'', minPoin:'', maxPoin:'', warna:'Kuning', deskripsi:'' };
@@ -688,7 +785,7 @@
                 if(id) { Storage.update('penanganan', id, d); UI.showToast('Data diubah'); } else { Storage.insert('penanganan', d); UI.showToast('Data ditambahkan'); }
                 UI.closeModal(); MasterPenanganan.render();
             },
-            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus penanganan ini?', 'Hapus', 'btn-danger', () => { Storage.remove('penanganan', id); UI.showToast('Data dihapus'); MasterPenanganan.render(); })
+            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus penanganan ini?', 'Hapus', 'btn-danger', () => { Storage.remove('penanganan', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tPenanganan', 'Tambahkan master penanganan.'); })
         };
 
         // ================= TRANSAKSI (Input & Riwayat) =================
@@ -759,8 +856,10 @@
                     e.preventDefault();
                     const oSantri = $('iSantri').options[$('iSantri').selectedIndex];
                     const oKat = $('iKat').options[$('iKat').selectedIndex];
-                    const tot = AppLogic.getSantriPoints($('iSantri').value, ViewInput.editId) + parseInt(oKat.dataset.pt);
+                    const basePts = AppLogic.getSantriPoints($('iSantri').value, ViewInput.editId);
+                    const tot = basePts + parseInt(oKat.dataset.pt);
                     const pen = AppLogic.getPenanganan(tot);
+                    const penBefore = AppLogic.getPenanganan(basePts);
 
                     const data = {
                         tanggal: $('iTgl').value, hari: $('iHari').value,
@@ -770,7 +869,16 @@
                     };
 
                     if(ViewInput.editId) { Storage.update('pelanggaran', ViewInput.editId, data); UI.showToast('Data diubah'); Views.load('riwayat'); }
-                    else { Storage.insert('pelanggaran', data); UI.showToast('Tersimpan otomatis'); $('iSantri').value=''; $('iKat').value=''; $('iCat').value=''; $('iSantri').dispatchEvent(new Event('change')); $('iKat').dispatchEvent(new Event('change')); }
+                    else {
+                        data.status = 'Baru'; data.tindakan = ''; // field baru: status tindak lanjut per pelanggaran
+                        Storage.insert('pelanggaran', data);
+                        UI.showToast('Tersimpan otomatis');
+                        $('iSantri').value=''; $('iKat').value=''; $('iCat').value=''; $('iSantri').dispatchEvent(new Event('change')); $('iKat').dispatchEvent(new Event('change'));
+                        // Notifikasi eskalasi: hanya muncul kalau level penanganan naik dibanding sebelum pelanggaran ini dicatat
+                        if((Utils.rankWarna[pen.warna]||0) > (Utils.rankWarna[penBefore.warna]||0)) {
+                            setTimeout(() => AppLogic.showEskalasiAlert(oSantri.text, pen), 400);
+                        }
+                    }
                 };
 
                 $('iTgl').dispatchEvent(new Event('change'));
@@ -782,18 +890,24 @@
         };
 
         const ViewRiwayat = {
+            page: 1,
+            pageSize: 15,
             render: () => {
+                ViewRiwayat.page = 1;
                 document.getElementById('mainContent').innerHTML = `
                     <div class="page-header"><h2 class="page-title">Riwayat Pelanggaran</h2></div>
                     <div class="toolbar"><div class="toolbar-left" style="flex:2">
                         <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="srchR" class="search-input" placeholder="Cari santri..."></div>
                         <input type="date" id="dtR" class="filter-select">
                         <select id="srtR" class="filter-select"><option value="desc">Terbaru</option><option value="asc">Terlama</option></select>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-danger" id="btnBulkDelete" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Hapus Terpilih (<span id="bulkCount">0</span>)</button>
                     </div></div>
                     <div id="tblRiwayatWrapper"></div>
                 `;
                 ViewRiwayat.loadTable();
-                ['srchR','dtR','srtR'].forEach(id => document.getElementById(id).addEventListener('input', ViewRiwayat.loadTable));
+                ['srchR','dtR','srtR'].forEach(id => document.getElementById(id).addEventListener('input', () => { ViewRiwayat.page = 1; ViewRiwayat.loadTable(); }));
             },
             loadTable: () => {
                 const q = document.getElementById('srchR').value.toLowerCase(), d = document.getElementById('dtR').value, sort = document.getElementById('srtR').value;
@@ -808,20 +922,77 @@
                 const wrapper = document.getElementById('tblRiwayatWrapper');
                 if(!data.length) return wrapper.innerHTML = CrudModule.emptyState('Riwayat kosong atau tidak sesuai filter.');
 
-                const rows = data.map(p => {
+                // --- Pagination (biar tabel besar tidak berat di render) ---
+                const totalPages = Math.max(1, Math.ceil(data.length / ViewRiwayat.pageSize));
+                if(ViewRiwayat.page > totalPages) ViewRiwayat.page = totalPages;
+                const startIdx = (ViewRiwayat.page - 1) * ViewRiwayat.pageSize;
+                const pageData = data.slice(startIdx, startIdx + ViewRiwayat.pageSize);
+
+                const statusColor = { 'Baru': 'gray', 'Diproses': 'yellow', 'Selesai': 'green' };
+                const rows = pageData.map(p => {
                     const badg = p.kelompok==='Ibadah'?'green':(p.kelompok==='Disiplin'?'orange':'yellow');
-                    return `<tr>
+                    const st = p.status || 'Baru';
+                    return `<tr data-id="${p.id}">
+                        <td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${p.id}"></td>
                         <td data-label="Tgl"><strong>${Utils.formatDate(p.tanggal)}</strong><br><small style="color:var(--text-muted)">${p.hari}</small></td>
                         <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${p.santriId}')">${Utils.escapeHTML(p.sNama)}</a><br><small style="color:var(--text-muted)">Kls ${p.kNama}</small></td>
                         <td data-label="Pelanggaran">${Utils.escapeHTML(p.kategoriNama)}<br><span class="badge ${badg}" style="margin-top:4px">${p.kelompok}</span></td>
                         <td data-label="Poin"><strong>${p.poin}</strong></td>
+                        <td data-label="Status"><span class="badge ${statusColor[st]||'gray'}" style="cursor:pointer" title="Klik untuk update tindak lanjut" onclick="ViewRiwayat.updateStatus('${p.id}')">${st}</span></td>
                         <td data-label="Aksi">${CrudModule.btnAction(`ViewRiwayat.edit('${p.id}')`, `ViewRiwayat.del('${p.id}')`)}</td>
                     </tr>`;
                 }).join('');
-                wrapper.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Tanggal</th><th>Santri</th><th>Pelanggaran</th><th>Poin</th><th width="100">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+                wrapper.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Tanggal</th><th>Santri</th><th>Pelanggaran</th><th>Poin</th><th>Status</th><th width="100">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>
+                    <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:12px">Menampilkan ${startIdx+1}-${Math.min(startIdx+ViewRiwayat.pageSize, data.length)} dari ${data.length} data</p>
+                    ${ViewRiwayat.renderPagination(totalPages)}`;
+
+                CrudModule.initBulkDelete('tblRiwayatWrapper', 'pelanggaran', ViewRiwayat.loadTable);
             },
+            renderPagination: (totalPages) => {
+                if(totalPages <= 1) return '';
+                const cur = ViewRiwayat.page;
+                let btns = `<button class="page-btn" ${cur===1?'disabled':''} onclick="ViewRiwayat.goToPage(${cur-1})">‹</button>`;
+                for(let i = 1; i <= totalPages; i++) {
+                    if(i === 1 || i === totalPages || Math.abs(i - cur) <= 1) {
+                        btns += `<button class="page-btn ${i===cur?'active':''}" onclick="ViewRiwayat.goToPage(${i})">${i}</button>`;
+                    } else if(Math.abs(i - cur) === 2) {
+                        btns += `<span style="padding:0 4px;color:var(--text-muted)">…</span>`;
+                    }
+                }
+                btns += `<button class="page-btn" ${cur===totalPages?'disabled':''} onclick="ViewRiwayat.goToPage(${cur+1})">›</button>`;
+                return `<div class="pagination">${btns}</div>`;
+            },
+            goToPage: (p) => { ViewRiwayat.page = p; ViewRiwayat.loadTable(); window.scrollTo({top:0, behavior:'smooth'}); },
             edit: (id) => { const d = Storage.getById('pelanggaran', id); if(d) { Views.setActiveMenu('input'); ViewInput.render(d); } },
-            del: (id) => UI.confirmDialog('Hapus Riwayat', 'Hapus riwayat ini? Poin akan disesuaikan otomatis.', 'Hapus', 'btn-danger', () => { Storage.remove('pelanggaran', id); UI.showToast('Data dihapus'); ViewRiwayat.render(); })
+            updateStatus: (id) => {
+                const d = Storage.getById('pelanggaran', id); if(!d) return;
+                const statuses = ['Baru','Diproses','Selesai'];
+                const opts = statuses.map(s => `<option value="${s}" ${((d.status||'Baru')===s)?'selected':''}>${s}</option>`).join('');
+                UI.openModal(`
+                    <form onsubmit="ViewRiwayat.saveStatus(event, '${id}')">
+                        <div class="modal-header"><div class="modal-title">Tindak Lanjut Pelanggaran</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                        <div class="modal-body">
+                            <div class="form-group"><label class="form-label">Status</label><select id="stStatus" class="form-control">${opts}</select></div>
+                            <div class="form-group"><label class="form-label">Catatan Tindak Lanjut</label><textarea id="stCatatan" class="form-control" rows="3" placeholder="Contoh: sudah dipanggil dan diberi nasihat oleh pembina asrama">${Utils.escapeHTML(d.tindakan||'')}</textarea></div>
+                        </div>
+                        <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="UI.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan</button></div>
+                    </form>
+                `);
+            },
+            saveStatus: (e, id) => {
+                e.preventDefault();
+                Storage.update('pelanggaran', id, { status: document.getElementById('stStatus').value, tindakan: document.getElementById('stCatatan').value.trim() });
+                UI.showToast('Status tindak lanjut diperbarui');
+                UI.closeModal();
+                ViewRiwayat.loadTable();
+            },
+            // Hapus tanpa reload halaman: baris dihapus langsung dari DOM, filter tanggal/pencarian yang sedang aktif tetap tersimpan.
+            del: (id) => UI.confirmDialog('Hapus Riwayat', 'Hapus riwayat ini? Poin akan disesuaikan otomatis.', 'Hapus', 'btn-danger', () => {
+                Storage.remove('pelanggaran', id);
+                UI.showToast('Data dihapus');
+                CrudModule.fadeRemoveRow(id, 'tblRiwayatWrapper', 'Riwayat kosong atau tidak sesuai filter.');
+                setTimeout(ViewRiwayat.loadTable, 260); // sinkronkan ulang nomor halaman & counter, filter tetap dipertahankan
+            })
         };
 
         const ViewRekap = {
@@ -836,6 +1007,10 @@
                     <div class="toolbar"><div class="toolbar-left">
                         <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="rSch" class="search-input" placeholder="Cari santri..."></div>
                         <select id="rSrt" class="filter-select"><option value="p_desc">Poin Periode Tertinggi</option><option value="p_asc">Poin Periode Terendah</option></select>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-outline" onclick="ViewRekap.exportExcel()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> Ekspor Excel</button>
+                        <button class="btn btn-outline" onclick="ViewRekap.exportPDF()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Ekspor PDF</button>
                     </div></div>
                     <div id="tblRekapWrapper"></div>
                 `;
@@ -896,6 +1071,7 @@
                 });
 
                 rData.sort((a,b) => srt === 'p_desc' ? b.periodePts - a.periodePts : a.periodePts - b.periodePts);
+                ViewRekap.lastData = rData; // simpan hasil terkini untuk keperluan ekspor
                 const w = document.getElementById('tblRekapWrapper');
                 if(!rData.length) return w.innerHTML = CrudModule.emptyState(`Tidak ada data untuk periode ${ViewRekap.tab}.`);
 
@@ -908,6 +1084,19 @@
                     <td data-label="Status"><span class="badge ${Utils.colorMap[i.pen.warna]||'gray'}">${i.pen.nama}</span></td>
                 </tr>`).join('');
                 w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Kasus (Periode)</th><th>Poin (Periode)</th><th>Total Poin</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+            },
+            // Ekspor ke Excel (format CSV yang otomatis terbuka rapi oleh Ms. Excel/Google Sheets)
+            exportExcel: () => {
+                if(!ViewRekap.lastData || !ViewRekap.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
+                const headers = ['Nama Santri','Kelas','Kasus (Periode)','Poin (Periode)','Total Poin','Status Penanganan'];
+                const rows = ViewRekap.lastData.map(i => [i.nama, i.kelas, i.jml, i.periodePts, i.totalPts, i.pen.nama]);
+                ExportUtil.toCSV(`Rekap_${ViewRekap.tab}_${Utils.getTodayYMD()}.csv`, headers, rows);
+                UI.showToast('File Excel (CSV) berhasil diunduh');
+            },
+            // Ekspor ke PDF via dialog cetak browser ("Save as PDF") — tanpa perlu library tambahan
+            exportPDF: () => {
+                if(!ViewRekap.lastData || !ViewRekap.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
+                window.print();
             }
         };
 
@@ -915,6 +1104,10 @@
         const ViewPengaturan = {
             render: () => {
                 const t = localStorage.getItem('sips_theme') || 'light';
+                const pengaturan = Storage.get('pengaturan');
+                const periodeInfo = pengaturan.periodeMulai
+                    ? `Periode poin aktif berjalan sejak <strong>${Utils.formatDate(pengaturan.periodeMulai)}</strong>. Pelanggaran sebelum tanggal ini tidak dihitung ke total poin aktif, tapi tetap bisa dilihat di menu Riwayat.`
+                    : `Belum pernah direset — total poin dihitung sejak data pertama kali diinput.`;
                 document.getElementById('mainContent').innerHTML = `
                     <div class="page-header"><h2 class="page-title">Pengaturan</h2><p class="page-subtitle">Sistem, Tampilan & Manajemen Data PWA v1.0</p></div>
                     
@@ -930,6 +1123,12 @@
                     </div>
 
                     <div class="card card-body" style="max-width: 600px; margin-bottom: 24px">
+                        <h3 style="font-size: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Periode Poin</h3>
+                        <p style="font-size:13px; color:var(--text-muted); margin-bottom: 16px;">${periodeInfo}</p>
+                        <button class="btn btn-outline" onclick="ViewPengaturan.periodeBaru()" style="justify-content:flex-start"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Mulai Periode Baru (Reset Poin Aktif)</button>
+                    </div>
+
+                    <div class="card card-body" style="max-width: 600px; margin-bottom: 24px">
                         <h3 style="font-size: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Manajemen Data (Backup/Restore)</h3>
                         <p style="font-size:13px; color:var(--text-muted); margin-bottom: 16px;">Karena aplikasi berjalan secara lokal (Offline PWA), Anda wajib melakukan backup data secara berkala untuk menghindari kehilangan data jika browser dibersihkan.</p>
                         
@@ -942,6 +1141,15 @@
                 `;
             },
             setTheme: (t) => { document.documentElement.setAttribute('data-theme', t); localStorage.setItem('sips_theme', t); ViewPengaturan.updateThemeIcon(); UI.showToast(t === 'dark' ? 'Mode gelap diaktifkan.' : 'Mode terang diaktifkan.'); },
+            periodeBaru: () => {
+                UI.confirmDialog('Mulai Periode Baru', 'Total poin aktif seluruh santri akan dihitung ulang mulai hari ini (jadi 0). Semua riwayat pelanggaran lama <strong>tetap tersimpan</strong> dan bisa dilihat di menu Riwayat. Lanjutkan?', 'Ya, Mulai Periode Baru', 'btn-danger', () => {
+                    const pengaturan = Storage.get('pengaturan');
+                    pengaturan.periodeMulai = Utils.getTodayYMD();
+                    Storage.set('pengaturan', pengaturan);
+                    UI.showToast('Periode baru dimulai. Poin aktif direset.');
+                    ViewPengaturan.render();
+                });
+            },
             toggleTheme: () => { const cur = localStorage.getItem('sips_theme') || 'light'; ViewPengaturan.setTheme(cur === 'light' ? 'dark' : 'light'); if(Views.getActive() === 'pengaturan') ViewPengaturan.render(); },
             updateThemeIcon: () => { const t = localStorage.getItem('sips_theme') || 'light'; const btn = document.getElementById('themeToggle'); if(btn) btn.textContent = t === 'dark' ? '🌙' : '☀️'; },
             backup: () => {
@@ -977,11 +1185,30 @@
         // --- 6. ROUTER & SYSTEM CORE ---
         const Views = (function() {
             let active = 'dashboard';
+            let history = []; // stack navigasi untuk tombol "Kembali"
             const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render };
             
-            const load = (v) => { if(m[v]) { active = v; m[v](); window.scrollTo(0,0); } };
+            const load = (v, opts = {}) => {
+                if(!m[v]) return;
+                if(!opts.isBack && v !== active) history.push(active);
+                active = v; m[v](); window.scrollTo(0,0);
+                injectBackButton();
+            };
+            const goBack = () => {
+                const prev = history.pop() || 'dashboard';
+                setActiveMenu(prev); load(prev, { isBack: true });
+            };
+            const injectBackButton = () => {
+                const header = document.querySelector('#mainContent .page-header');
+                if(!header || active === 'dashboard' || history.length === 0) return;
+                const btn = document.createElement('button');
+                btn.className = 'btn-back';
+                btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali';
+                btn.onclick = () => Views.goBack();
+                header.prepend(btn);
+            };
             const setActiveMenu = (v) => { document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active')); const el = document.querySelector(`.menu-item[data-view="${v}"]`); if(el) el.classList.add('active'); };
-            return { load, setActiveMenu, getActive: () => active };
+            return { load, goBack, setActiveMenu, getActive: () => active };
         })();
 
         // --- APP BOOTSTRAP ---
@@ -1025,9 +1252,32 @@
             // Initial Load (Auto Load all stats on open)
             Views.load('dashboard');
 
-            // PWA Service Worker Registration
+            // PWA Service Worker Registration + Auto-Update
+            // Catatan: localStorage TIDAK PERNAH disentuh oleh proses ini -- hanya file app-shell (HTML/CSS/JS) yang diperbarui.
             if('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW Reg Failed', err));
+                navigator.serviceWorker.register('service-worker.js').then(reg => {
+                    // Cek manual setiap kali app dibuka, siapa tau ada versi baru di server
+                    reg.update();
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        if(!newWorker) return;
+                        newWorker.addEventListener('statechange', () => {
+                            // 'installed' + sudah ada controller aktif = ini update (bukan install pertama kali)
+                            if(newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                UI.showToast('Versi baru ditemukan, memperbarui aplikasi...', 'success');
+                                setTimeout(() => newWorker.postMessage('SKIP_WAITING'), 1000);
+                            }
+                        });
+                    });
+                }).catch(err => console.log('SW Reg Failed', err));
+
+                // Setelah service worker baru mengambil alih, reload otomatis 1x agar user langsung dapat versi terbaru
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if(refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                });
             }
         });
     </script>
