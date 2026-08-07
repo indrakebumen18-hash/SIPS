@@ -6,12 +6,12 @@
  * (HTML/manifest/ikon) supaya aplikasi bisa dibuka tanpa internet.
  */
 
-const CACHE_NAME = 'sips-cache-v1'; // Naikkan angka versi ini setiap kali ada update besar pada index_sips.html
+const CACHE_NAME = 'sips-cache-v3'; // Naikkan angka versi ini setiap kali ada update besar pada index.html
 
 // Sesuaikan path ini jika nama/lokasi file berbeda di server Anda
 const APP_SHELL = [
   './',
-  './index_sips.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -39,7 +39,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// --- FETCH: Cache First, fallback ke Network, fallback terakhir ke index_sips.html (mode offline) ---
+// --- FETCH: Cache First, fallback ke Network, fallback terakhir ke index.html (mode offline) ---
 self.addEventListener('fetch', (event) => {
   // Hanya tangani request GET (biarkan request lain lewat apa adanya)
   if (event.request.method !== 'GET') return;
@@ -60,7 +60,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // Offline & tidak ada di cache -> tampilkan halaman utama sebagai fallback (untuk navigasi)
           if (event.request.mode === 'navigate') {
-            return caches.match('./index_sips.html');
+            return caches.match('./index.html');
           }
         });
     })
