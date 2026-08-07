@@ -39,6 +39,8 @@
             --badge-orange-bg: #ffedd5; --badge-orange-text: #9a3412;
             --badge-red-bg: #fee2e2; --badge-red-text: #991b1b;
             --badge-gray-bg: #f3f4f6; --badge-gray-text: #374151;
+            --badge-blue-bg: #dbeafe; --badge-blue-text: #1e40af;
+            --badge-purple-bg: #ede9fe; --badge-purple-text: #5b21b6;
         }
 
         [data-theme="dark"] {
@@ -50,6 +52,8 @@
             --badge-orange-bg: rgba(249, 115, 22, 0.2); --badge-orange-text: #fb923c;
             --badge-red-bg: rgba(239, 68, 68, 0.2); --badge-red-text: #f87171;
             --badge-gray-bg: rgba(107, 114, 128, 0.2); --badge-gray-text: #d1d5db;
+            --badge-blue-bg: rgba(59, 130, 246, 0.2); --badge-blue-text: #93c5fd;
+            --badge-purple-bg: rgba(139, 92, 246, 0.2); --badge-purple-text: #c4b5fd;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -164,6 +168,8 @@
         .badge.orange { background-color: var(--badge-orange-bg); color: var(--badge-orange-text); }
         .badge.red { background-color: var(--badge-red-bg); color: var(--badge-red-text); }
         .badge.gray { background-color: var(--badge-gray-bg); color: var(--badge-gray-text); }
+        .badge.blue { background-color: var(--badge-blue-bg); color: var(--badge-blue-text); }
+        .badge.purple { background-color: var(--badge-purple-bg); color: var(--badge-purple-text); }
         
         .clickable-name { color: var(--primary); font-weight: 600; cursor: pointer; text-decoration: none; transition: color 0.2s; }
         .clickable-name:hover { text-decoration: underline; }
@@ -268,10 +274,22 @@
             </div>
 
             <div class="menu-group">
+                <div class="menu-group-title">Prestasi</div>
+                <a class="menu-item" data-view="inputPrestasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg> Input Prestasi</a>
+                <a class="menu-item" data-view="riwayatPrestasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Riwayat Prestasi</a>
+            </div>
+
+            <div class="menu-group">
+                <div class="menu-group-title">Perkembangan Santri</div>
+                <a class="menu-item" data-view="akademikHafalan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Akademik & Hafalan</a>
+            </div>
+
+            <div class="menu-group">
                 <div class="menu-group-title">Data Dasar</div>
                 <a class="menu-item" data-view="kelas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg> Kelas</a>
                 <a class="menu-item" data-view="santri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg> Santri</a>
                 <a class="menu-item" data-view="kategori"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path></svg> Kategori</a>
+                <a class="menu-item" data-view="prestasiKategori"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg> Kategori Prestasi</a>
                 <a class="menu-item" data-view="penanganan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg> Penanganan</a>
             </div>
             
@@ -355,7 +373,7 @@
 
         // --- 2. STORAGE MANAGEMENT (AUTO SAVE) ---
         const Storage = (function() {
-            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], pengaturan: { tema: 'light', periodeMulai: null } };
+            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], pengaturan: { tema: 'light', periodeMulai: null } };
             
             const init = () => {
                 Object.keys(SCHEMA).forEach(k => { if (!localStorage.getItem(`sips_${k}`)) set(k, SCHEMA[k]); });
@@ -441,6 +459,7 @@
                 }, 0);
             };
             const getSantriPointsInRange = (sId, start, end) => Storage.get('pelanggaran').reduce((sum, p) => (p.santriId === sId && Utils.inRange(p.tanggal, start, end)) ? sum + (parseInt(p.poin)||0) : sum, 0);
+            const getSantriPrestasiPoints = (sId, excludeId = null) => Storage.get('prestasi').reduce((sum, p) => (p.santriId === sId && p.id !== excludeId) ? sum + (parseInt(p.poin)||0) : sum, 0);
             
             const getPenanganan = (pts) => {
                 const p = Storage.get('penanganan').sort((a,b) => b.minPoin - a.minPoin).find(x => pts >= x.minPoin);
@@ -452,11 +471,26 @@
                 if(!santri) return;
                 const kelas = Storage.getById('kelas', santri.kelasId) || {nama: '-'};
                 const totalPts = getSantriPoints(sId);
+                const prestasiPts = getSantriPrestasiPoints(sId);
                 const penanganan = getPenanganan(totalPts);
                 const riwayat = Storage.get('pelanggaran').filter(p => p.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
-                
+                const riwayatPrestasi = Storage.get('prestasi').filter(p => p.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+                const riwayatAkademik = Storage.get('akademik').filter(a => a.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+                const riwayatHafalan = Storage.get('hafalan').filter(h => h.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+
                 const rows = riwayat.map(p => `<tr><td>${Utils.formatDate(p.tanggal)}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>${p.poin}</strong></td></tr>`).join('');
                 const tbl = riwayat.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Belum ada riwayat pelanggaran.</p></div>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Pelanggaran</th><th>Poin</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+                const rowsPrestasi = riwayatPrestasi.map(p => `<tr><td>${Utils.formatDate(p.tanggal)}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>+${p.poin}</strong></td></tr>`).join('');
+                const tblPrestasi = riwayatPrestasi.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Belum ada catatan prestasi.</p></div>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Prestasi</th><th>Poin</th></tr></thead><tbody>${rowsPrestasi}</tbody></table>`;
+
+                const predBadge = {A:'green',B:'blue',C:'yellow',D:'red'};
+                const rowsAkademik = riwayatAkademik.slice(0,5).map(a => `<tr><td>${Utils.formatDate(a.tanggal)}</td><td>${Utils.escapeHTML(a.mapel)}</td><td><strong>${a.nilai}</strong></td><td><span class="badge ${predBadge[a.predikat]||'gray'}">${a.predikat}</span></td></tr>`).join('');
+                const tblAkademik = riwayatAkademik.length === 0 ? '<p class="empty-desc" style="padding:8px 0">Belum ada catatan nilai.</p>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Mapel</th><th>Nilai</th><th>Predikat</th></tr></thead><tbody>${rowsAkademik}</tbody></table>`;
+
+                const statusBadgeH = {'Lancar':'green','Kurang Lancar':'yellow','Mengulang':'orange'};
+                const rowsHafalan = riwayatHafalan.slice(0,5).map(h => `<tr><td>${Utils.formatDate(h.tanggal)}</td><td>${Utils.escapeHTML(h.materi)}</td><td><span class="badge ${statusBadgeH[h.status]||'gray'}">${h.status}</span></td></tr>`).join('');
+                const tblHafalan = riwayatHafalan.length === 0 ? '<p class="empty-desc" style="padding:8px 0">Belum ada catatan hafalan.</p>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Materi</th><th>Status</th></tr></thead><tbody>${rowsHafalan}</tbody></table>`;
 
                 UI.openModal(`
                     <div class="modal-header"><div class="modal-title">Detail Santri</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
@@ -467,12 +501,28 @@
                                 <p style="color:var(--text-muted);font-size:14px;margin-bottom:8px">Kelas: <strong>${Utils.escapeHTML(kelas.nama)}</strong> | Status: ${santri.status}</p>
                                 <span class="badge ${Utils.colorMap[penanganan.warna] || 'gray'}">${penanganan.nama}</span>
                             </div>
-                            <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:120px">
-                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">TOTAL POIN</div>
+                            <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:110px">
+                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">POIN PELANGGARAN</div>
                                 <div style="font-size:28px; font-weight:700; color:var(--${Utils.colorMap[penanganan.warna] || 'text-main'})">${totalPts}</div>
                             </div>
+                            <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:110px">
+                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">POIN PRESTASI</div>
+                                <div style="font-size:28px; font-weight:700; color:var(--success)">${prestasiPts}</div>
+                            </div>
                         </div>
-                        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">Riwayat Keseluruhan (${riwayat.length})</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px">
+                            <div>
+                                <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">📋 Nilai Akademik Terbaru</h4>
+                                <div class="card table-container" style="box-shadow:none; border:1px solid var(--border)">${tblAkademik}</div>
+                            </div>
+                            <div>
+                                <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">📖 Hafalan Terbaru</h4>
+                                <div class="card table-container" style="box-shadow:none; border:1px solid var(--border)">${tblHafalan}</div>
+                            </div>
+                        </div>
+                        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">🏆 Riwayat Prestasi (${riwayatPrestasi.length})</h4>
+                        <div class="card table-container" style="box-shadow:none; border:1px solid var(--border); margin-bottom:20px">${tblPrestasi}</div>
+                        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">⚠️ Riwayat Pelanggaran (${riwayat.length})</h4>
                         <div class="card table-container" style="box-shadow:none; border:1px solid var(--border)">${tbl}</div>
                     </div>
                 `);
@@ -486,7 +536,7 @@
                 );
             };
 
-            return { getSantriPoints, getSantriPointsInRange, getPenanganan, showSantriDetail, showEskalasiAlert };
+            return { getSantriPoints, getSantriPointsInRange, getSantriPrestasiPoints, getPenanganan, showSantriDetail, showEskalasiAlert };
         })();
 
         // --- 4b. EXPORT UTILITY (CSV/Excel & Print-to-PDF) ---
@@ -513,6 +563,11 @@
                 
                 const pointsWeek = plWeek.reduce((sum, p) => sum + parseInt(p.poin), 0);
                 const penangananCountWeek = plWeek.filter(p => p.penangananId).length;
+
+                const prestasi = Storage.get('prestasi');
+                const prWeek = prestasi.filter(p => Utils.isThisWeek(p.tanggal));
+                const sMapAll = {}; Storage.get('santri').forEach(s => sMapAll[s.id] = s.nama);
+                const prestasiTerbaru = [...prWeek].sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal)).slice(0, 6);
                 
                 const catMap = {}; plWeek.forEach(p => catMap[p.kategoriNama] = (catMap[p.kategoriNama] || 0) + 1);
                 const topCatStr = Object.keys(catMap).length > 0 ? Object.keys(catMap).reduce((a, b) => catMap[a] > catMap[b] ? a : b) : '-';
@@ -545,6 +600,20 @@
                         <div class="card card-body" style="border-left: 4px solid var(--border)"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:8px">TERBANYAK (MINGGU)</div><div style="font-size:16px;font-weight:600;line-height:1.2;margin-top:8px" title="${topCatStr}">${topCatStr.length > 25 ? topCatStr.substring(0,25)+'...' : topCatStr}</div></div>
                         <div class="card card-body" style="border-left: 4px solid var(--warning)"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:8px">POIN (MINGGU INI)</div><div style="font-size:28px;font-weight:700">${pointsWeek} <span style="font-size:12px;font-weight:normal;color:var(--text-muted)">Pts</span></div></div>
                         <div class="card card-body" style="border-left: 4px solid var(--primary)"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:8px">TINDAKAN (MINGGU)</div><div style="font-size:28px;font-weight:700">${penangananCountWeek} <span style="font-size:12px;font-weight:normal;color:var(--text-muted)">Aksi</span></div></div>
+                        <div class="card card-body card-interactive" onclick="Views.load('riwayatPrestasi')" style="border-left: 4px solid var(--success)"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:8px">PRESTASI (MINGGU)</div><div style="font-size:28px;font-weight:700;color:var(--success)">${prWeek.length} <span style="font-size:12px;font-weight:normal;color:var(--text-muted)">Catatan ➝</span></div></div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:24px; margin-bottom:24px">
+                        <div class="card">
+                            <div style="padding:16px 24px; border-bottom:1px solid var(--border); font-weight:600; background:var(--surface-hover)">🏆 Pencapaian Terbaru (Minggu Ini)</div>
+                            <div style="padding:0 24px; overflow-y:auto; max-height:280px">
+                                ${prestasiTerbaru.length > 0 ? prestasiTerbaru.map(p => `
+                                    <div style="padding:14px 0; border-bottom:1px dashed var(--border); display:flex; justify-content:space-between; align-items:center">
+                                        <div><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${p.santriId}')">${Utils.escapeHTML(sMapAll[p.santriId]||'Tidak diketahui')}</a><div style="font-size:12px;color:var(--text-muted)">${Utils.escapeHTML(p.kategoriNama)}</div></div>
+                                        <div style="font-weight:700;font-size:16px;color:var(--success)">+${p.poin}</div>
+                                    </div>
+                                `).join('') : '<div class="empty-state" style="padding:30px 0"><p class="empty-desc">Belum ada prestasi tercatat minggu ini.</p></div>'}
+                            </div>
+                        </div>
                     </div>
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:24px">
                         <div class="card" style="grid-row: span 2; display:flex; flex-direction:column;">
@@ -754,6 +823,41 @@
             del: (id) => UI.confirmDialog('Hapus Data', 'Hapus kategori ini?', 'Hapus', 'btn-danger', () => { Storage.remove('kategori', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tKategori', 'Tambahkan kategori pelanggaran.'); })
         };
 
+        const MasterPrestasiKategori = {
+            render: () => {
+                const data = Storage.get('prestasiKategori').sort((a,b) => b.poin - a.poin);
+                const colMap = { 'Akademik':'blue', 'Ibadah':'green', 'Akhlak':'purple', 'Lomba':'yellow', 'Hafalan':'blue', 'Lainnya':'gray' };
+                const tbody = data.map(i => `<tr data-id="${i.id}"><td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${i.id}"></td><td data-label="Prestasi"><strong>${Utils.escapeHTML(i.nama)}</strong></td><td data-label="Kelompok"><span class="badge ${colMap[i.kelompok]||'gray'}">${i.kelompok}</span></td><td data-label="Poin"><strong>+${i.poin}</strong></td><td data-label="Aksi">${CrudModule.btnAction(`MasterPrestasiKategori.form('${i.id}')`, `MasterPrestasiKategori.del('${i.id}')`)}</td></tr>`).join('');
+                const html = data.length ? `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Prestasi</th><th>Kelompok</th><th>Poin</th><th width="100">Aksi</th></tr></thead><tbody>${tbody}</tbody></table></div>` : CrudModule.emptyState('Tambahkan kategori prestasi.');
+                CrudModule.renderTable('Kategori Prestasi', 'Kelola jenis prestasi dan poin bonusnya.', 'tPrestasiKategori', html, "MasterPrestasiKategori.form()");
+                document.getElementById('searchData').oninput = (e) => { const q = e.target.value.toLowerCase(); document.querySelectorAll('#tPrestasiKategori tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
+                CrudModule.initBulkDelete('tPrestasiKategori', 'prestasiKategori', MasterPrestasiKategori.render);
+            },
+            form: (id = null) => {
+                const d = id ? Storage.getById('prestasiKategori', id) : { nama: '', kelompok: 'Akademik', poin: '' };
+                const kOpts = ['Akademik','Ibadah','Akhlak','Lomba','Hafalan','Lainnya'].map(k => `<option value="${k}" ${k===d.kelompok?'selected':''}>${k}</option>`).join('');
+                UI.openModal(`
+                    <form onsubmit="MasterPrestasiKategori.save(event, '${id||''}')">
+                        <div class="modal-header"><div class="modal-title">${id?'Edit':'Tambah'} Kategori Prestasi</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                        <div class="modal-body">
+                            <div class="form-group"><label class="form-label">Nama Prestasi</label><input type="text" id="pkNama" class="form-control" value="${Utils.escapeHTML(d.nama)}" required placeholder="Contoh: Juara Lomba Pidato, Hafal 1 Juz"></div>
+                            <div class="form-group"><label class="form-label">Kelompok</label><select id="pkKelompok" class="form-control">${kOpts}</select></div>
+                            <div class="form-group"><label class="form-label">Poin Bonus</label><input type="number" id="pkPoin" class="form-control" value="${d.poin}" required min="1"></div>
+                        </div>
+                        <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="UI.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan</button></div>
+                    </form>
+                `);
+            },
+            save: (e, id) => {
+                e.preventDefault(); const nama = document.getElementById('pkNama').value.trim();
+                if(Storage.get('prestasiKategori').some(k => k.nama.toLowerCase() === nama.toLowerCase() && k.id !== id)) return UI.showToast('Nama sudah ada.', 'error');
+                const d = { nama, kelompok: document.getElementById('pkKelompok').value, poin: parseInt(document.getElementById('pkPoin').value) };
+                if(id) { Storage.update('prestasiKategori', id, d); UI.showToast('Data diubah'); } else { Storage.insert('prestasiKategori', d); UI.showToast('Data ditambahkan'); }
+                UI.closeModal(); MasterPrestasiKategori.render();
+            },
+            del: (id) => UI.confirmDialog('Hapus Data', 'Hapus kategori prestasi ini?', 'Hapus', 'btn-danger', () => { Storage.remove('prestasiKategori', id); UI.showToast('Data dihapus'); CrudModule.fadeRemoveRow(id, 'tPrestasiKategori', 'Tambahkan kategori prestasi.'); })
+        };
+
         const MasterPenanganan = {
             render: () => {
                 const data = Storage.get('penanganan').sort((a,b) => a.minPoin - b.minPoin);
@@ -887,6 +991,161 @@
                     $('iSantri').dispatchEvent(new Event('change')); $('iKat').dispatchEvent(new Event('change'));
                 }
             }
+        };
+
+        // ================= PRESTASI (Input & Riwayat) =================
+        const ViewInputPrestasi = {
+            editId: null,
+            render: (editData = null) => {
+                ViewInputPrestasi.editId = editData ? editData.id : null;
+                const santriList = Storage.get('santri').filter(s => s.status === 'Aktif').sort((a,b)=>a.nama.localeCompare(b.nama));
+                const katList = Storage.get('prestasiKategori').sort((a,b)=>a.nama.localeCompare(b.nama));
+                if (!santriList.length || !katList.length) return document.getElementById('mainContent').innerHTML = CrudModule.emptyState('Pastikan data Santri & Kategori Prestasi sudah terisi.');
+
+                const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
+                const sOpts = santriList.map(s => `<option value="${s.id}" data-kelas="${kMap[s.kelasId]||'-'}">${Utils.escapeHTML(s.nama)}</option>`).join('');
+                const kOpts = katList.map(k => `<option value="${k.id}" data-kel="${k.kelompok}" data-pt="${k.poin}">${Utils.escapeHTML(k.nama)}</option>`).join('');
+                const today = editData ? editData.tanggal : Utils.getTodayYMD();
+
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">${editData?'Edit':'Input'} Prestasi</h2><p class="page-subtitle">Catat pencapaian positif santri — poin akan menambah rekam jejak prestasinya.</p></div>
+                    <form id="frmInputPrestasi" class="card card-body" style="max-width:900px; margin:0 auto">
+                        <div class="form-grid">
+                            <div>
+                                <div class="form-group"><label class="form-label">Tanggal</label><input type="date" id="pTgl" class="form-control" required value="${today}"></div>
+                                <div class="form-group"><label class="form-label">Santri</label><select id="pSantri" class="form-control" required><option value="">--Pilih--</option>${sOpts}</select></div>
+                                <div class="form-group"><label class="form-label">Kelas</label><input type="text" id="pKelas" class="form-control" readonly tabindex="-1"></div>
+                            </div>
+                            <div>
+                                <div class="form-group"><label class="form-label">Prestasi</label><select id="pKat" class="form-control" required><option value="">--Pilih--</option>${kOpts}</select></div>
+                                <div class="form-grid" style="gap:16px">
+                                    <div class="form-group"><label class="form-label">Kelompok</label><input type="text" id="pKel" class="form-control" readonly tabindex="-1"></div>
+                                    <div class="form-group"><label class="form-label">Poin</label><input type="text" id="pPoin" class="form-control" readonly tabindex="-1"></div>
+                                </div>
+                                <div class="form-group"><label class="form-label">Catatan</label><textarea id="pCat" class="form-control"></textarea></div>
+                            </div>
+                        </div>
+                        <div id="pnlHandleP" class="panel-penanganan level-green">
+                            <div class="panel-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg></div>
+                            <div><div class="panel-title">Total Poin Prestasi</div><div class="panel-value" id="lblHandleP">-</div><div style="font-size:13px;opacity:0.9" id="lblTotPtsP">Pilih santri</div></div>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px">
+                            ${editData ? `<button type="button" class="btn btn-outline" onclick="Views.load('riwayatPrestasi')">Batal</button>` : ''}
+                            <button type="submit" class="btn btn-primary">Simpan Otomatis</button>
+                        </div>
+                    </form>
+                `;
+
+                const $ = id => document.getElementById(id);
+                const calc = () => {
+                    const sId = $('pSantri').value;
+                    if(!sId) return;
+                    const basePts = AppLogic.getSantriPrestasiPoints(sId, ViewInputPrestasi.editId);
+                    const addPts = parseInt($('pPoin').value) || 0;
+                    const tot = basePts + addPts;
+                    $('lblHandleP').textContent = `${tot} Poin`;
+                    $('lblTotPtsP').innerHTML = `Proyeksi: <strong>${tot}</strong> Pts (Lama ${basePts} + Baru ${addPts})`;
+                };
+
+                $('pSantri').onchange = (e) => { const o = e.target.options[e.target.selectedIndex]; $('pKelas').value = o.dataset.kelas||''; calc(); };
+                $('pKat').onchange = (e) => { const o = e.target.options[e.target.selectedIndex]; $('pKel').value = o.dataset.kel||''; $('pPoin').value = o.dataset.pt||''; calc(); };
+
+                $('frmInputPrestasi').onsubmit = (e) => {
+                    e.preventDefault();
+                    const oKat = $('pKat').options[$('pKat').selectedIndex];
+                    const data = {
+                        tanggal: $('pTgl').value,
+                        santriId: $('pSantri').value, kategoriId: $('pKat').value,
+                        kategoriNama: oKat.text, kelompok: oKat.dataset.kel, poin: parseInt(oKat.dataset.pt),
+                        catatan: $('pCat').value.trim()
+                    };
+                    if(ViewInputPrestasi.editId) { Storage.update('prestasi', ViewInputPrestasi.editId, data); UI.showToast('Data diubah'); Views.load('riwayatPrestasi'); }
+                    else {
+                        Storage.insert('prestasi', data);
+                        UI.showToast('Prestasi tersimpan');
+                        $('pSantri').value=''; $('pKat').value=''; $('pCat').value=''; $('pSantri').dispatchEvent(new Event('change')); $('pKat').dispatchEvent(new Event('change'));
+                    }
+                };
+
+                if(editData) {
+                    $('pSantri').value = editData.santriId; $('pKat').value = editData.kategoriId; $('pCat').value = editData.catatan;
+                    $('pSantri').dispatchEvent(new Event('change')); $('pKat').dispatchEvent(new Event('change'));
+                }
+            }
+        };
+
+        const ViewRiwayatPrestasi = {
+            page: 1,
+            pageSize: 15,
+            render: () => {
+                ViewRiwayatPrestasi.page = 1;
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">Riwayat Prestasi</h2></div>
+                    <div class="toolbar"><div class="toolbar-left" style="flex:2">
+                        <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="srchP" class="search-input" placeholder="Cari santri..."></div>
+                        <input type="date" id="dtP" class="filter-select">
+                        <select id="srtP" class="filter-select"><option value="desc">Terbaru</option><option value="asc">Terlama</option></select>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-danger" id="btnBulkDelete" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Hapus Terpilih (<span id="bulkCount">0</span>)</button>
+                    </div></div>
+                    <div id="tblRiwayatPWrapper"></div>
+                `;
+                ViewRiwayatPrestasi.loadTable();
+                ['srchP','dtP','srtP'].forEach(id => document.getElementById(id).addEventListener('input', () => { ViewRiwayatPrestasi.page = 1; ViewRiwayatPrestasi.loadTable(); }));
+            },
+            loadTable: () => {
+                const q = document.getElementById('srchP').value.toLowerCase(), d = document.getElementById('dtP').value, sort = document.getElementById('srtP').value;
+                const sMap = {}; Storage.get('santri').forEach(s => sMap[s.id] = s.nama);
+                const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
+                const sKelMap = {}; Storage.get('santri').forEach(s => sKelMap[s.id] = kMap[s.kelasId]||'-');
+
+                let data = Storage.get('prestasi').map(p => ({...p, sNama: sMap[p.santriId]||'Unknown', kNama: sKelMap[p.santriId]}));
+                data = data.filter(p => p.sNama.toLowerCase().includes(q) && (d === '' || p.tanggal === d));
+                data.sort((a,b) => sort === 'desc' ? new Date(b.tanggal) - new Date(a.tanggal) : new Date(a.tanggal) - new Date(b.tanggal));
+
+                const wrapper = document.getElementById('tblRiwayatPWrapper');
+                if(!data.length) return wrapper.innerHTML = CrudModule.emptyState('Riwayat prestasi kosong atau tidak sesuai filter.');
+
+                const totalPages = Math.max(1, Math.ceil(data.length / ViewRiwayatPrestasi.pageSize));
+                if(ViewRiwayatPrestasi.page > totalPages) ViewRiwayatPrestasi.page = totalPages;
+                const startIdx = (ViewRiwayatPrestasi.page - 1) * ViewRiwayatPrestasi.pageSize;
+                const pageData = data.slice(startIdx, startIdx + ViewRiwayatPrestasi.pageSize);
+                const colMap = { 'Akademik':'blue', 'Ibadah':'green', 'Akhlak':'purple', 'Lomba':'yellow', 'Hafalan':'blue', 'Lainnya':'gray' };
+
+                const rows = pageData.map(p => `<tr data-id="${p.id}">
+                    <td data-label="Pilih"><input type="checkbox" class="rowChk" data-id="${p.id}"></td>
+                    <td data-label="Tgl"><strong>${Utils.formatDate(p.tanggal)}</strong></td>
+                    <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${p.santriId}')">${Utils.escapeHTML(p.sNama)}</a><br><small style="color:var(--text-muted)">Kls ${p.kNama}</small></td>
+                    <td data-label="Prestasi">${Utils.escapeHTML(p.kategoriNama)}<br><span class="badge ${colMap[p.kelompok]||'gray'}" style="margin-top:4px">${p.kelompok}</span></td>
+                    <td data-label="Poin"><strong style="color:var(--success)">+${p.poin}</strong></td>
+                    <td data-label="Aksi">${CrudModule.btnAction(`ViewRiwayatPrestasi.edit('${p.id}')`, `ViewRiwayatPrestasi.del('${p.id}')`)}</td>
+                </tr>`).join('');
+                wrapper.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th style="width:36px"><input type="checkbox" class="chkAll"></th><th>Tanggal</th><th>Santri</th><th>Prestasi</th><th>Poin</th><th width="100">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>
+                    <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:12px">Menampilkan ${startIdx+1}-${Math.min(startIdx+ViewRiwayatPrestasi.pageSize, data.length)} dari ${data.length} data</p>
+                    ${ViewRiwayatPrestasi.renderPagination(totalPages)}`;
+
+                CrudModule.initBulkDelete('tblRiwayatPWrapper', 'prestasi', ViewRiwayatPrestasi.loadTable);
+            },
+            renderPagination: (totalPages) => {
+                if(totalPages <= 1) return '';
+                const cur = ViewRiwayatPrestasi.page;
+                let btns = `<button class="page-btn" ${cur===1?'disabled':''} onclick="ViewRiwayatPrestasi.goToPage(${cur-1})">‹</button>`;
+                for(let i = 1; i <= totalPages; i++) {
+                    if(i === 1 || i === totalPages || Math.abs(i - cur) <= 1) btns += `<button class="page-btn ${i===cur?'active':''}" onclick="ViewRiwayatPrestasi.goToPage(${i})">${i}</button>`;
+                    else if(Math.abs(i - cur) === 2) btns += `<span style="padding:0 4px;color:var(--text-muted)">…</span>`;
+                }
+                btns += `<button class="page-btn" ${cur===totalPages?'disabled':''} onclick="ViewRiwayatPrestasi.goToPage(${cur+1})">›</button>`;
+                return `<div class="pagination">${btns}</div>`;
+            },
+            goToPage: (p) => { ViewRiwayatPrestasi.page = p; ViewRiwayatPrestasi.loadTable(); window.scrollTo({top:0, behavior:'smooth'}); },
+            edit: (id) => { const d = Storage.getById('prestasi', id); if(d) { Views.setActiveMenu('inputPrestasi'); ViewInputPrestasi.render(d); } },
+            del: (id) => UI.confirmDialog('Hapus Prestasi', 'Hapus catatan prestasi ini?', 'Hapus', 'btn-danger', () => {
+                Storage.remove('prestasi', id);
+                UI.showToast('Data dihapus');
+                CrudModule.fadeRemoveRow(id, 'tblRiwayatPWrapper', 'Riwayat prestasi kosong atau tidak sesuai filter.');
+                setTimeout(ViewRiwayatPrestasi.loadTable, 260);
+            })
         };
 
         const ViewRiwayat = {
@@ -1101,6 +1360,131 @@
         };
 
         // ================= PENGATURAN (Phase 5 Finalisasi) =================
+        // ================= AKADEMIK & HAFALAN =================
+        const ViewAkademikHafalan = {
+            tab: 'akademik',
+            render: () => {
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">Akademik & Hafalan</h2><p class="page-subtitle">Catat perkembangan nilai pelajaran dan hafalan Al-Qur'an santri.</p></div>
+                    <div class="tabs">
+                        <button class="tab-btn ${ViewAkademikHafalan.tab==='akademik'?'active':''}" onclick="ViewAkademikHafalan.setTab('akademik')">📋 Nilai Akademik</button>
+                        <button class="tab-btn ${ViewAkademikHafalan.tab==='hafalan'?'active':''}" onclick="ViewAkademikHafalan.setTab('hafalan')">📖 Hafalan Al-Qur'an</button>
+                    </div>
+                    <div class="toolbar">
+                        <div class="toolbar-left"><div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="ahSch" class="search-input" placeholder="Cari santri..."></div></div>
+                        <div class="toolbar-right"><button class="btn btn-primary" onclick="ViewAkademikHafalan.form()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Tambah</span></button></div>
+                    </div>
+                    <div id="tblAH"></div>
+                `;
+                ViewAkademikHafalan.loadTable();
+                document.getElementById('ahSch').addEventListener('input', ViewAkademikHafalan.loadTable);
+            },
+            setTab: (t) => { ViewAkademikHafalan.tab = t; Views.load('akademikHafalan'); },
+            loadTable: () => {
+                const q = document.getElementById('ahSch').value.toLowerCase();
+                const sMap = {}; Storage.get('santri').forEach(s => sMap[s.id] = s.nama);
+                const store = ViewAkademikHafalan.tab === 'akademik' ? 'akademik' : 'hafalan';
+                let data = Storage.get(store).map(d => ({...d, sNama: sMap[d.santriId]||'Tidak diketahui'}));
+                data = data.filter(d => d.sNama.toLowerCase().includes(q)).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+                const w = document.getElementById('tblAH');
+                if(!data.length) return w.innerHTML = CrudModule.emptyState(ViewAkademikHafalan.tab==='akademik' ? 'Belum ada catatan nilai akademik.' : 'Belum ada catatan hafalan.');
+
+                let rows, thead;
+                if(ViewAkademikHafalan.tab === 'akademik') {
+                    const predBadge = {A:'green',B:'blue',C:'yellow',D:'red'};
+                    rows = data.map(d => `<tr data-id="${d.id}">
+                        <td data-label="Tgl">${Utils.formatDate(d.tanggal)}</td>
+                        <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${d.santriId}')">${Utils.escapeHTML(d.sNama)}</a></td>
+                        <td data-label="Mapel">${Utils.escapeHTML(d.mapel)}</td>
+                        <td data-label="Nilai"><strong>${d.nilai}</strong></td>
+                        <td data-label="Predikat"><span class="badge ${predBadge[d.predikat]||'gray'}">${d.predikat}</span></td>
+                        <td data-label="Aksi">${CrudModule.btnAction(`ViewAkademikHafalan.form('${d.id}')`, `ViewAkademikHafalan.del('${d.id}')`)}</td>
+                    </tr>`).join('');
+                    thead = `<th>Tanggal</th><th>Santri</th><th>Mapel</th><th>Nilai</th><th>Predikat</th><th width="100">Aksi</th>`;
+                } else {
+                    const statusBadge = {'Lancar':'green','Kurang Lancar':'yellow','Mengulang':'orange'};
+                    rows = data.map(d => `<tr data-id="${d.id}">
+                        <td data-label="Tgl">${Utils.formatDate(d.tanggal)}</td>
+                        <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${d.santriId}')">${Utils.escapeHTML(d.sNama)}</a></td>
+                        <td data-label="Materi">${Utils.escapeHTML(d.materi)}</td>
+                        <td data-label="Status"><span class="badge ${statusBadge[d.status]||'gray'}">${d.status}</span></td>
+                        <td data-label="Catatan">${Utils.escapeHTML(d.catatan||'-')}</td>
+                        <td data-label="Aksi">${CrudModule.btnAction(`ViewAkademikHafalan.form('${d.id}')`, `ViewAkademikHafalan.del('${d.id}')`)}</td>
+                    </tr>`).join('');
+                    thead = `<th>Tanggal</th><th>Santri</th><th>Materi</th><th>Status</th><th>Catatan</th><th width="100">Aksi</th>`;
+                }
+                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table></div>`;
+            },
+            form: (id = null) => {
+                const store = ViewAkademikHafalan.tab === 'akademik' ? 'akademik' : 'hafalan';
+                const d = id ? Storage.getById(store, id) : null;
+                const santriList = Storage.get('santri').filter(s => s.status === 'Aktif').sort((a,b) => a.nama.localeCompare(b.nama));
+                if(!santriList.length) return UI.showToast('Tambahkan data santri terlebih dahulu.', 'error');
+                const sOpts = santriList.map(s => `<option value="${s.id}" ${d && d.santriId===s.id?'selected':''}>${Utils.escapeHTML(s.nama)}</option>`).join('');
+
+                let bodyHtml;
+                if(ViewAkademikHafalan.tab === 'akademik') {
+                    const mapelList = ["Al-Qur'an","Hadits","Fiqih","Akidah Akhlak","Bahasa Arab","Matematika","Bahasa Indonesia","IPA","IPS","Lainnya"];
+                    const mapelOpts = mapelList.map(m => `<option ${d && d.mapel===m?'selected':''}>${m}</option>`).join('');
+                    bodyHtml = `
+                        <div class="form-group"><label class="form-label">Santri</label><select id="ahSantri" class="form-control" required><option value="">--Pilih--</option>${sOpts}</select></div>
+                        <div class="form-grid">
+                            <div class="form-group"><label class="form-label">Tanggal</label><input type="date" id="ahTgl" class="form-control" required value="${d?d.tanggal:Utils.getTodayYMD()}"></div>
+                            <div class="form-group"><label class="form-label">Mata Pelajaran</label><select id="ahMapel" class="form-control">${mapelOpts}</select></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">Nilai (0-100)</label><input type="number" id="ahNilai" class="form-control" min="0" max="100" required value="${d?d.nilai:''}"></div>
+                        <div class="form-group"><label class="form-label">Catatan</label><textarea id="ahCatatan" class="form-control">${d?Utils.escapeHTML(d.catatan||''):''}</textarea></div>
+                    `;
+                } else {
+                    const statusOpts = ['Lancar','Kurang Lancar','Mengulang'].map(s => `<option ${d && d.status===s?'selected':''}>${s}</option>`).join('');
+                    bodyHtml = `
+                        <div class="form-group"><label class="form-label">Santri</label><select id="ahSantri" class="form-control" required><option value="">--Pilih--</option>${sOpts}</select></div>
+                        <div class="form-grid">
+                            <div class="form-group"><label class="form-label">Tanggal</label><input type="date" id="ahTgl" class="form-control" required value="${d?d.tanggal:Utils.getTodayYMD()}"></div>
+                            <div class="form-group"><label class="form-label">Status</label><select id="ahStatus" class="form-control">${statusOpts}</select></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">Juz / Surah</label><input type="text" id="ahMateri" class="form-control" placeholder="Contoh: Juz 30 / An-Naba 1-20" required value="${d?Utils.escapeHTML(d.materi):''}"></div>
+                        <div class="form-group"><label class="form-label">Catatan Penguji</label><textarea id="ahCatatan" class="form-control">${d?Utils.escapeHTML(d.catatan||''):''}</textarea></div>
+                    `;
+                }
+
+                UI.openModal(`
+                    <form onsubmit="ViewAkademikHafalan.save(event, '${id||''}')">
+                        <div class="modal-header"><div class="modal-title">${id?'Edit':'Tambah'} ${ViewAkademikHafalan.tab==='akademik'?'Nilai Akademik':'Hafalan'}</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                        <div class="modal-body">${bodyHtml}</div>
+                        <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="UI.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan</button></div>
+                    </form>
+                `);
+            },
+            save: (e, id) => {
+                e.preventDefault();
+                const store = ViewAkademikHafalan.tab === 'akademik' ? 'akademik' : 'hafalan';
+                let data = { santriId: document.getElementById('ahSantri').value, tanggal: document.getElementById('ahTgl').value };
+                if(store === 'akademik') {
+                    const nilai = parseInt(document.getElementById('ahNilai').value);
+                    data.mapel = document.getElementById('ahMapel').value;
+                    data.nilai = nilai;
+                    data.predikat = nilai >= 90 ? 'A' : nilai >= 80 ? 'B' : nilai >= 70 ? 'C' : 'D';
+                    data.catatan = document.getElementById('ahCatatan').value.trim();
+                } else {
+                    data.materi = document.getElementById('ahMateri').value.trim();
+                    data.status = document.getElementById('ahStatus').value;
+                    data.catatan = document.getElementById('ahCatatan').value.trim();
+                }
+                if(id) { Storage.update(store, id, data); UI.showToast('Data diubah'); } else { Storage.insert(store, data); UI.showToast('Data ditambahkan'); }
+                UI.closeModal(); ViewAkademikHafalan.loadTable();
+            },
+            del: (id) => {
+                const store = ViewAkademikHafalan.tab === 'akademik' ? 'akademik' : 'hafalan';
+                UI.confirmDialog('Hapus Data', 'Hapus catatan ini?', 'Hapus', 'btn-danger', () => {
+                    Storage.remove(store, id);
+                    UI.showToast('Data dihapus');
+                    CrudModule.fadeRemoveRow(id, 'tblAH', 'Belum ada data.');
+                });
+            }
+        };
+
         const ViewPengaturan = {
             render: () => {
                 const t = localStorage.getItem('sips_theme') || 'light';
@@ -1186,7 +1570,7 @@
         const Views = (function() {
             let active = 'dashboard';
             let history = []; // stack navigasi untuk tombol "Kembali"
-            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render };
+            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render, prestasiKategori: MasterPrestasiKategori.render, inputPrestasi: ViewInputPrestasi.render, riwayatPrestasi: ViewRiwayatPrestasi.render, akademikHafalan: ViewAkademikHafalan.render };
             
             const load = (v, opts = {}) => {
                 if(!m[v]) return;
