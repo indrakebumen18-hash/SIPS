@@ -280,6 +280,12 @@
             </div>
 
             <div class="menu-group">
+                <div class="menu-group-title">Kehadiran</div>
+                <a class="menu-item" data-view="absen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg> Absen Harian</a>
+                <a class="menu-item" data-view="rekapKehadiran"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg> Rekap Kehadiran</a>
+            </div>
+
+            <div class="menu-group">
                 <div class="menu-group-title">Perkembangan Santri</div>
                 <a class="menu-item" data-view="akademikHafalan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Akademik & Hafalan</a>
             </div>
@@ -326,22 +332,23 @@
                 return `${d.getDate().toString().padStart(2,'0')} ${m[d.getMonth()]} ${d.getFullYear()}`;
             },
             getDayName: (dateStr) => ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][new Date(dateStr).getDay()],
+            formatDateHari: (dateStr) => { if(!dateStr) return '-'; return `${Utils.getDayName(dateStr)}, ${Utils.formatDate(dateStr)}`; },
             getTodayYMD: () => { const d = new Date(); return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`; },
             isToday: (dateStr) => new Date(dateStr).toDateString() === new Date().toDateString(),
             isThisWeek: (dateStr) => {
                 const d = new Date(dateStr), today = new Date();
-                const day = today.getDay() || 7; 
-                const monday = new Date(today); monday.setDate(today.getDate() - day + 1); monday.setHours(0,0,0,0);
-                const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
-                return d >= monday && d <= sunday;
+                const sunday = Utils.getSunday(today);
+                const saturday = new Date(sunday); saturday.setDate(sunday.getDate() + 6); saturday.setHours(23,59,59,999);
+                return d >= sunday && d <= saturday;
             },
-            getMonday: (d) => { const day = d.getDay() || 7; const m = new Date(d); m.setDate(d.getDate() - day + 1); m.setHours(0,0,0,0); return m; },
+            // Minggu (Ahad) sebagai awal pekan -- sesuai siklus pembinaan: Minggu s.d. Sabtu, ditotal/direview tiap Minggu berikutnya.
+            getSunday: (d) => { const s = new Date(d); s.setDate(d.getDate() - d.getDay()); s.setHours(0,0,0,0); return s; },
             toYMD: (d) => `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`,
             inRange: (dateStr, start, end) => { const d = new Date(dateStr + 'T00:00:00'); return d >= start && d <= end; },
             getWeekRange: (offset = 0) => {
-                const monday = Utils.getMonday(new Date()); monday.setDate(monday.getDate() + (offset * 7));
-                const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
-                return { start: monday, end: sunday };
+                const sunday = Utils.getSunday(new Date()); sunday.setDate(sunday.getDate() + (offset * 7));
+                const saturday = new Date(sunday); saturday.setDate(sunday.getDate() + 6); saturday.setHours(23,59,59,999);
+                return { start: sunday, end: saturday };
             },
             getMonthRange: (offset = 0) => {
                 const today = new Date();
@@ -350,10 +357,10 @@
                 const end = new Date(base.getFullYear(), base.getMonth() + 1, 0); end.setHours(23,59,59,999);
                 return { start, end };
             },
-            getWeekOfMonth: (mondayDate) => {
-                const firstOfMonth = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), 1);
-                const firstMonday = Utils.getMonday(firstOfMonth);
-                const diffDays = Math.round((mondayDate - firstMonday) / 86400000);
+            getWeekOfMonth: (sundayDate) => {
+                const firstOfMonth = new Date(sundayDate.getFullYear(), sundayDate.getMonth(), 1);
+                const firstSunday = Utils.getSunday(firstOfMonth);
+                const diffDays = Math.round((sundayDate - firstSunday) / 86400000);
                 return Math.floor(diffDays / 7) + 1;
             },
             monthNames: ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'],
@@ -373,7 +380,7 @@
 
         // --- 2. STORAGE MANAGEMENT (AUTO SAVE) ---
         const Storage = (function() {
-            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], pengaturan: { tema: 'light', periodeMulai: null } };
+            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], kehadiran: [], pengaturan: { tema: 'light', periodeMulai: null } };
             
             const init = () => {
                 Object.keys(SCHEMA).forEach(k => { if (!localStorage.getItem(`sips_${k}`)) set(k, SCHEMA[k]); });
@@ -450,11 +457,12 @@
 
         // --- 4. BUSINESS LOGIC ---
         const AppLogic = (function() {
+            // Poin pelanggaran dihitung otomatis per pekan berjalan (Minggu s.d. Sabtu) -- direview/ditotal tiap hari Minggu, lalu otomatis mulai dari 0 lagi pekan berikutnya.
             const getSantriPoints = (sId, excludeId = null) => {
-                const periodeMulai = Storage.get('pengaturan').periodeMulai;
+                const { start, end } = Utils.getWeekRange(0);
                 return Storage.get('pelanggaran').reduce((sum, p) => {
                     if(p.santriId !== sId || p.id === excludeId) return sum;
-                    if(periodeMulai && p.tanggal < periodeMulai) return sum; // di luar periode aktif, tidak dihitung ke total (riwayat tetap tersimpan)
+                    if(!Utils.inRange(p.tanggal, start, end)) return sum; // di luar pekan berjalan, tidak dihitung ke total aktif (riwayat tetap tersimpan)
                     return sum + (parseInt(p.poin)||0);
                 }, 0);
             };
@@ -478,8 +486,8 @@
                 const riwayatAkademik = Storage.get('akademik').filter(a => a.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
                 const riwayatHafalan = Storage.get('hafalan').filter(h => h.santriId === sId).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
 
-                const rows = riwayat.map(p => `<tr><td>${Utils.formatDate(p.tanggal)}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>${p.poin}</strong></td></tr>`).join('');
-                const tbl = riwayat.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Belum ada riwayat pelanggaran.</p></div>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Pelanggaran</th><th>Poin</th></tr></thead><tbody>${rows}</tbody></table>`;
+                const rows = riwayat.map(p => `<tr><td>${Utils.formatDate(p.tanggal)}</td><td>${p.hari||Utils.getDayName(p.tanggal)}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>${p.poin}</strong></td></tr>`).join('');
+                const tbl = riwayat.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Belum ada riwayat pelanggaran.</p></div>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Hari</th><th>Pelanggaran</th><th>Poin</th></tr></thead><tbody>${rows}</tbody></table>`;
 
                 const rowsPrestasi = riwayatPrestasi.map(p => `<tr><td>${Utils.formatDate(p.tanggal)}</td><td>${Utils.escapeHTML(p.kategoriNama)}</td><td><strong>+${p.poin}</strong></td></tr>`).join('');
                 const tblPrestasi = riwayatPrestasi.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="empty-desc">Belum ada catatan prestasi.</p></div>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Prestasi</th><th>Poin</th></tr></thead><tbody>${rowsPrestasi}</tbody></table>`;
@@ -491,6 +499,9 @@
                 const statusBadgeH = {'Lancar':'green','Kurang Lancar':'yellow','Mengulang':'orange'};
                 const rowsHafalan = riwayatHafalan.slice(0,5).map(h => `<tr><td>${Utils.formatDate(h.tanggal)}</td><td>${Utils.escapeHTML(h.materi)}</td><td><span class="badge ${statusBadgeH[h.status]||'gray'}">${h.status}</span></td></tr>`).join('');
                 const tblHafalan = riwayatHafalan.length === 0 ? '<p class="empty-desc" style="padding:8px 0">Belum ada catatan hafalan.</p>' : `<table class="table" style="font-size:13px"><thead><tr><th>Tanggal</th><th>Materi</th><th>Status</th></tr></thead><tbody>${rowsHafalan}</tbody></table>`;
+
+                const bulanIni = Utils.getMonthRange(0);
+                const absen = AbsenLogic.getRingkasan(sId, bulanIni.start, bulanIni.end);
 
                 UI.openModal(`
                     <div class="modal-header"><div class="modal-title">Detail Santri</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
@@ -510,6 +521,13 @@
                                 <div style="font-size:28px; font-weight:700; color:var(--success)">${prestasiPts}</div>
                             </div>
                         </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px">
+                            <div style="flex:1; min-width:90px; text-align:center; background:var(--badge-green-bg); padding:10px; border-radius:var(--radius-md)"><div style="font-size:11px;font-weight:600;color:var(--badge-green-text)">HADIR</div><div style="font-size:20px;font-weight:700;color:var(--badge-green-text)">${absen.hadir}</div></div>
+                            <div style="flex:1; min-width:90px; text-align:center; background:var(--badge-blue-bg); padding:10px; border-radius:var(--radius-md)"><div style="font-size:11px;font-weight:600;color:var(--badge-blue-text)">IZIN</div><div style="font-size:20px;font-weight:700;color:var(--badge-blue-text)">${absen.izin}</div></div>
+                            <div style="flex:1; min-width:90px; text-align:center; background:var(--badge-yellow-bg); padding:10px; border-radius:var(--radius-md)"><div style="font-size:11px;font-weight:600;color:var(--badge-yellow-text)">SAKIT</div><div style="font-size:20px;font-weight:700;color:var(--badge-yellow-text)">${absen.sakit}</div></div>
+                            <div style="flex:1; min-width:90px; text-align:center; background:var(--badge-red-bg); padding:10px; border-radius:var(--radius-md)"><div style="font-size:11px;font-weight:600;color:var(--badge-red-text)">ALPHA</div><div style="font-size:20px;font-weight:700;color:var(--badge-red-text)">${absen.alpha}</div></div>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin:-12px 0 20px">📅 Kehadiran bulan berjalan (${Utils.monthNames[bulanIni.start.getMonth()]} ${bulanIni.start.getFullYear()})</p>
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px">
                             <div>
                                 <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">📋 Nilai Akademik Terbaru</h4>
@@ -537,6 +555,61 @@
             };
 
             return { getSantriPoints, getSantriPointsInRange, getSantriPrestasiPoints, getPenanganan, showSantriDetail, showEskalasiAlert };
+        })();
+
+        // --- 4a. ABSENSI / KEHADIRAN LOGIC ---
+        const AbsenLogic = (function() {
+            const ALPHA_NAMA = 'Alpha / Tidak Hadir Tanpa Keterangan';
+
+            // Kategori pelanggaran "Alpha" dibuat otomatis sekali saja -- poinnya bisa diubah kapan saja lewat Master > Kategori.
+            const ensureAlphaKategori = () => {
+                let kat = Storage.get('kategori').find(k => k.nama === ALPHA_NAMA);
+                if(!kat) kat = Storage.insert('kategori', { nama: ALPHA_NAMA, kelompok: 'Disiplin', poin: 5 });
+                return kat;
+            };
+
+            // Simpan/Perbarui satu catatan kehadiran (1 santri, 1 tanggal). Kalau sudah ada sebelumnya, otomatis di-update (tidak dobel).
+            const upsert = (tanggal, hari, kelasId, santriId, status, keterangan) => {
+                const rec = Storage.get('kehadiran').find(k => k.tanggal === tanggal && k.santriId === santriId);
+
+                // Kalau sebelumnya berstatus Alpha (ada pelanggaran otomatis) tapi sekarang bukan Alpha lagi -> hapus pelanggaran otomatis itu
+                if(rec && rec.pelanggaranId && status !== 'Alpha') Storage.remove('pelanggaran', rec.pelanggaranId);
+
+                let pelanggaranId = (rec && rec.status === 'Alpha') ? rec.pelanggaranId : null;
+                if(status === 'Alpha') {
+                    const kat = ensureAlphaKategori();
+                    const catatanAlpha = keterangan || 'Tidak hadir tanpa keterangan (Alpha)';
+                    if(!pelanggaranId) {
+                        const basePts = AppLogic.getSantriPoints(santriId);
+                        const pen = AppLogic.getPenanganan(basePts + kat.poin);
+                        const p = Storage.insert('pelanggaran', {
+                            tanggal, hari, santriId, kategoriId: kat.id, kategoriNama: kat.nama, kelompok: kat.kelompok, poin: kat.poin,
+                            penangananId: pen.id, catatan: catatanAlpha, status: 'Baru', tindakan: '', autoDariAbsensi: true
+                        });
+                        pelanggaranId = p.id;
+                    } else {
+                        Storage.update('pelanggaran', pelanggaranId, { catatan: catatanAlpha });
+                    }
+                }
+
+                const data = { tanggal, hari, kelasId, santriId, status, keterangan, pelanggaranId };
+                if(rec) Storage.update('kehadiran', rec.id, data); else Storage.insert('kehadiran', data);
+            };
+
+            // Hapus 1 catatan kehadiran (dan ikut hapus pelanggaran otomatis kalau ada)
+            const hapus = (id) => {
+                const rec = Storage.getById('kehadiran', id);
+                if(rec && rec.pelanggaranId) Storage.remove('pelanggaran', rec.pelanggaranId);
+                Storage.remove('kehadiran', id);
+            };
+
+            const getRingkasan = (sId, start, end) => {
+                const recs = Storage.get('kehadiran').filter(k => k.santriId === sId && Utils.inRange(k.tanggal, start, end));
+                const count = (st) => recs.filter(r => r.status === st).length;
+                return { hadir: count('Hadir'), izin: count('Izin'), sakit: count('Sakit'), alpha: count('Alpha'), total: recs.length };
+            };
+
+            return { ensureAlphaKategori, upsert, hapus, getRingkasan, ALPHA_NAMA };
         })();
 
         // --- 4b. EXPORT UTILITY (CSV/Excel & Print-to-PDF) ---
@@ -993,6 +1066,72 @@
             }
         };
 
+        // ================= ABSENSI HARIAN =================
+        const ViewAbsen = {
+            render: () => {
+                const kelasList = Storage.get('kelas').sort((a,b) => a.nama.localeCompare(b.nama));
+                if(!kelasList.length) return document.getElementById('mainContent').innerHTML = CrudModule.emptyState('Tambahkan data Kelas terlebih dahulu.');
+                const kOpts = kelasList.map(k => `<option value="${k.id}">${Utils.escapeHTML(k.nama)}</option>`).join('');
+
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">Absen Harian</h2><p class="page-subtitle">Catat kehadiran satu kelas sekaligus. Isi ulang tanggal & kelas yang sama untuk mengoreksi data yang sudah tersimpan.</p></div>
+                    <div class="card card-body" style="max-width:900px; margin:0 auto 20px">
+                        <div class="form-grid">
+                            <div class="form-group"><label class="form-label">Tanggal</label><input type="date" id="absTgl" class="form-control" value="${Utils.getTodayYMD()}"></div>
+                            <div class="form-group"><label class="form-label">Kelas</label><select id="absKelas" class="form-control"><option value="">--Pilih Kelas--</option>${kOpts}</select></div>
+                        </div>
+                    </div>
+                    <div id="absListWrapper" style="max-width:900px; margin:0 auto"></div>
+                `;
+                document.getElementById('absTgl').addEventListener('change', ViewAbsen.loadList);
+                document.getElementById('absKelas').addEventListener('change', ViewAbsen.loadList);
+                ViewAbsen.loadList();
+            },
+            loadList: () => {
+                const tgl = document.getElementById('absTgl').value, kelasId = document.getElementById('absKelas').value;
+                const w = document.getElementById('absListWrapper');
+                if(!tgl || !kelasId) { w.innerHTML = ''; return; }
+
+                const santriList = Storage.get('santri').filter(s => s.status === 'Aktif' && s.kelasId === kelasId).sort((a,b) => a.nama.localeCompare(b.nama));
+                if(!santriList.length) { w.innerHTML = CrudModule.emptyState('Belum ada santri aktif di kelas ini.'); return; }
+
+                const existing = {}; Storage.get('kehadiran').filter(k => k.tanggal === tgl && k.kelasId === kelasId).forEach(k => existing[k.santriId] = k);
+                const sudahAda = Object.keys(existing).length > 0;
+                const statusOpts = ['Hadir','Izin','Sakit','Alpha'];
+
+                const rows = santriList.map(s => {
+                    const rec = existing[s.id];
+                    const st = rec ? rec.status : 'Hadir';
+                    const ket = rec ? (rec.keterangan || '') : '';
+                    return `<tr data-id="${s.id}">
+                        <td data-label="Santri"><strong>${Utils.escapeHTML(s.nama)}</strong></td>
+                        <td data-label="Status"><select class="form-control absStatus" onchange="ViewAbsen.toggleKet(this)">${statusOpts.map(o => `<option value="${o}" ${o===st?'selected':''}>${o}</option>`).join('')}</select></td>
+                        <td data-label="Keterangan"><input type="text" class="form-control absKet" placeholder="Opsional" value="${Utils.escapeHTML(ket)}" style="${st==='Hadir'?'display:none':''}"></td>
+                    </tr>`;
+                }).join('');
+
+                w.innerHTML = `
+                    ${sudahAda ? `<p style="font-size:13px; color:var(--warning); margin-bottom:12px">⚠️ Absensi tanggal & kelas ini sudah pernah diisi — data di bawah adalah yang tersimpan, silakan koreksi jika perlu.</p>` : ''}
+                    <div class="toolbar"><div class="toolbar-left"><button class="btn btn-outline" onclick="ViewAbsen.markAllHadir()">✓ Tandai Semua Hadir</button></div></div>
+                    <div class="card table-container"><table class="table"><thead><tr><th>Santri</th><th style="width:150px">Status</th><th>Keterangan</th></tr></thead><tbody id="absRows">${rows}</tbody></table></div>
+                    <div style="display:flex; justify-content:flex-end; margin-top:20px"><button class="btn btn-primary" onclick="ViewAbsen.save()">Simpan Absensi (${santriList.length} Santri)</button></div>
+                `;
+            },
+            toggleKet: (sel) => { const tr = sel.closest('tr'); tr.querySelector('.absKet').style.display = sel.value === 'Hadir' ? 'none' : ''; },
+            markAllHadir: () => document.querySelectorAll('#absRows .absStatus').forEach(sel => { sel.value = 'Hadir'; ViewAbsen.toggleKet(sel); }),
+            save: () => {
+                const tanggal = document.getElementById('absTgl').value, kelasId = document.getElementById('absKelas').value, hari = Utils.getDayName(tanggal);
+                document.querySelectorAll('#absRows tr').forEach(tr => {
+                    const santriId = tr.dataset.id;
+                    const status = tr.querySelector('.absStatus').value;
+                    const keterangan = tr.querySelector('.absKet').value.trim();
+                    AbsenLogic.upsert(tanggal, hari, kelasId, santriId, status, keterangan);
+                });
+                UI.showToast('Absensi tersimpan');
+                ViewAbsen.loadList();
+            }
+        };
+
         // ================= PRESTASI (Input & Riwayat) =================
         const ViewInputPrestasi = {
             editId: null,
@@ -1260,7 +1399,7 @@
             monthOffset: 0,
             render: () => {
                 document.getElementById('mainContent').innerHTML = `
-                    <div class="page-header"><h2 class="page-title">Rekapitulasi</h2><p class="page-subtitle">Rekap mingguan otomatis mulai Senin & terpisah setiap pekan (reset tiap Minggu malam); rekap bulanan otomatis terpisah tiap bulan.</p></div>
+                    <div class="page-header"><h2 class="page-title">Rekapitulasi</h2><p class="page-subtitle">Rekap mingguan otomatis mulai hari Minggu s.d. Sabtu, ditotal & direview tiap hari Minggu berikutnya; rekap bulanan otomatis terpisah tiap bulan. Status penanganan mengikuti poin pada periode yang sedang dilihat.</p></div>
                     <div class="tabs">${['Harian', 'Mingguan', 'Bulanan', 'Semua Data'].map(t => `<button class="tab-btn ${ViewRekap.tab === t ? 'active' : ''}" onclick="ViewRekap.setTab('${t}')">${t}</button>`).join('')}</div>
                     ${ViewRekap.renderPeriodNav()}
                     <div class="toolbar"><div class="toolbar-left">
@@ -1297,7 +1436,7 @@
                         <button class="btn btn-outline period-nav-btn" onclick="ViewRekap.navPeriod(-1)">◀ Minggu Sebelumnya</button>
                         <div style="text-align:center">
                             <div style="font-weight:700">Minggu ke-${weekNum} • ${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekap.weekOffset===0?' (Berjalan)':''}</div>
-                            <div style="font-size:12px;color:var(--text-muted)">${Utils.formatDate(Utils.toYMD(start))} - ${Utils.formatDate(Utils.toYMD(end))}</div>
+                            <div style="font-size:12px;color:var(--text-muted)">${Utils.formatDateHari(Utils.toYMD(start))} — ${Utils.formatDateHari(Utils.toYMD(end))}</div>
                         </div>
                         <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekap.navPeriod(1)">Minggu Berikutnya ▶</button>
                     </div>`;
@@ -1325,8 +1464,8 @@
                     const jml = plPeriode.length;
                     if(ViewRekap.tab !== 'Semua Data' && jml === 0) return;
                     const periodePts = plPeriode.reduce((sum,p) => sum + (parseInt(p.poin)||0), 0);
-                    const totalPts = AppLogic.getSantriPoints(s.id), pen = AppLogic.getPenanganan(totalPts);
-                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', jml, periodePts, totalPts, pen });
+                    const pen = AppLogic.getPenanganan(periodePts); // status mengikuti poin PERIODE yang sedang dilihat, bukan akumulasi lintas periode
+                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', jml, periodePts, pen });
                 });
 
                 rData.sort((a,b) => srt === 'p_desc' ? b.periodePts - a.periodePts : a.periodePts - b.periodePts);
@@ -1334,21 +1473,21 @@
                 const w = document.getElementById('tblRekapWrapper');
                 if(!rData.length) return w.innerHTML = CrudModule.emptyState(`Tidak ada data untuk periode ${ViewRekap.tab}.`);
 
+                const periodLabel = ViewRekap.tab === 'Semua Data' ? 'Total Poin' : 'Poin Periode Ini';
                 const rows = rData.map(i => `<tr>
                     <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td>
                     <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td>
-                    <td data-label="Kasus (Periode)"><strong>${i.jml}</strong> kasus</td>
-                    <td data-label="Poin (Periode)"><strong>${i.periodePts}</strong></td>
-                    <td data-label="Total Poin">${i.totalPts}</td>
+                    <td data-label="Kasus"><strong>${i.jml}</strong> kasus</td>
+                    <td data-label="${periodLabel}"><strong>${i.periodePts}</strong></td>
                     <td data-label="Status"><span class="badge ${Utils.colorMap[i.pen.warna]||'gray'}">${i.pen.nama}</span></td>
                 </tr>`).join('');
-                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Kasus (Periode)</th><th>Poin (Periode)</th><th>Total Poin</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Kasus</th><th>${periodLabel}</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
             },
             // Ekspor ke Excel (format CSV yang otomatis terbuka rapi oleh Ms. Excel/Google Sheets)
             exportExcel: () => {
                 if(!ViewRekap.lastData || !ViewRekap.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
-                const headers = ['Nama Santri','Kelas','Kasus (Periode)','Poin (Periode)','Total Poin','Status Penanganan'];
-                const rows = ViewRekap.lastData.map(i => [i.nama, i.kelas, i.jml, i.periodePts, i.totalPts, i.pen.nama]);
+                const headers = ['Nama Santri','Kelas','Kasus','Poin','Status Penanganan'];
+                const rows = ViewRekap.lastData.map(i => [i.nama, i.kelas, i.jml, i.periodePts, i.pen.nama]);
                 ExportUtil.toCSV(`Rekap_${ViewRekap.tab}_${Utils.getTodayYMD()}.csv`, headers, rows);
                 UI.showToast('File Excel (CSV) berhasil diunduh');
             },
@@ -1485,13 +1624,102 @@
             }
         };
 
+        // ================= REKAP KEHADIRAN =================
+        const ViewRekapKehadiran = {
+            tab: 'Mingguan',
+            weekOffset: 0,
+            monthOffset: 0,
+            render: () => {
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">Rekap Kehadiran</h2><p class="page-subtitle">Ringkasan kehadiran per santri. Minggu berjalan Minggu s.d. Sabtu, sama seperti Rekap Pelanggaran.</p></div>
+                    <div class="tabs">${['Mingguan', 'Bulanan'].map(t => `<button class="tab-btn ${ViewRekapKehadiran.tab === t ? 'active' : ''}" onclick="ViewRekapKehadiran.setTab('${t}')">${t}</button>`).join('')}</div>
+                    ${ViewRekapKehadiran.renderPeriodNav()}
+                    <div class="toolbar"><div class="toolbar-left">
+                        <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="rkSch" class="search-input" placeholder="Cari santri..."></div>
+                        <select id="rkKelas" class="filter-select"><option value="">Semua Kelas</option>${Storage.get('kelas').sort((a,b)=>a.nama.localeCompare(b.nama)).map(k=>`<option value="${k.id}">${Utils.escapeHTML(k.nama)}</option>`).join('')}</select>
+                    </div>
+                    <div class="toolbar-right"><button class="btn btn-outline" onclick="ViewRekapKehadiran.exportExcel()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> Ekspor Excel</button></div></div>
+                    <div id="tblRekapKehadiran"></div>
+                `;
+                ViewRekapKehadiran.loadTable();
+                ['rkSch','rkKelas'].forEach(id => document.getElementById(id).addEventListener('input', ViewRekapKehadiran.loadTable));
+            },
+            setTab: (t) => { ViewRekapKehadiran.tab = t; ViewRekapKehadiran.weekOffset = 0; ViewRekapKehadiran.monthOffset = 0; Views.load('rekapKehadiran'); },
+            navPeriod: (dir) => {
+                if(ViewRekapKehadiran.tab === 'Mingguan') { if(ViewRekapKehadiran.weekOffset + dir <= 0) ViewRekapKehadiran.weekOffset += dir; }
+                else { if(ViewRekapKehadiran.monthOffset + dir <= 0) ViewRekapKehadiran.monthOffset += dir; }
+                Views.load('rekapKehadiran');
+            },
+            getRange: () => ViewRekapKehadiran.tab === 'Mingguan' ? Utils.getWeekRange(ViewRekapKehadiran.weekOffset) : Utils.getMonthRange(ViewRekapKehadiran.monthOffset),
+            renderPeriodNav: () => {
+                if(ViewRekapKehadiran.tab === 'Mingguan') {
+                    const { start, end } = Utils.getWeekRange(ViewRekapKehadiran.weekOffset);
+                    const weekNum = Utils.getWeekOfMonth(start);
+                    const isCurrent = ViewRekapKehadiran.weekOffset >= 0;
+                    return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                        <button class="btn btn-outline period-nav-btn" onclick="ViewRekapKehadiran.navPeriod(-1)">◀ Minggu Sebelumnya</button>
+                        <div style="text-align:center">
+                            <div style="font-weight:700">Minggu ke-${weekNum} • ${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekapKehadiran.weekOffset===0?' (Berjalan)':''}</div>
+                            <div style="font-size:12px;color:var(--text-muted)">${Utils.formatDateHari(Utils.toYMD(start))} — ${Utils.formatDateHari(Utils.toYMD(end))}</div>
+                        </div>
+                        <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekapKehadiran.navPeriod(1)">Minggu Berikutnya ▶</button>
+                    </div>`;
+                }
+                const { start } = Utils.getMonthRange(ViewRekapKehadiran.monthOffset);
+                const isCurrent = ViewRekapKehadiran.monthOffset >= 0;
+                return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                    <button class="btn btn-outline period-nav-btn" onclick="ViewRekapKehadiran.navPeriod(-1)">◀ Bulan Sebelumnya</button>
+                    <div style="font-weight:700">${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekapKehadiran.monthOffset===0?' (Berjalan)':''}</div>
+                    <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekapKehadiran.navPeriod(1)">Bulan Berikutnya ▶</button>
+                </div>`;
+            },
+            loadTable: () => {
+                const q = document.getElementById('rkSch').value.toLowerCase(), kelasFilter = document.getElementById('rkKelas').value;
+                const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
+                const range = ViewRekapKehadiran.getRange();
+                const kehadiran = Storage.get('kehadiran').filter(k => Utils.inRange(k.tanggal, range.start, range.end));
+
+                let rData = [];
+                Storage.get('santri').filter(s => s.status === 'Aktif' && s.nama.toLowerCase().includes(q) && (!kelasFilter || s.kelasId === kelasFilter)).forEach(s => {
+                    const recs = kehadiran.filter(k => k.santriId === s.id);
+                    if(!recs.length) return;
+                    const hadir = recs.filter(r => r.status === 'Hadir').length;
+                    const izin = recs.filter(r => r.status === 'Izin').length;
+                    const sakit = recs.filter(r => r.status === 'Sakit').length;
+                    const alpha = recs.filter(r => r.status === 'Alpha').length;
+                    const total = recs.length;
+                    const persen = total ? Math.round((hadir / total) * 100) : 0;
+                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', hadir, izin, sakit, alpha, total, persen });
+                });
+                rData.sort((a,b) => a.persen - b.persen); // paling rendah kehadirannya di atas, biar cepat kelihatan
+
+                ViewRekapKehadiran.lastData = rData;
+                const w = document.getElementById('tblRekapKehadiran');
+                if(!rData.length) return w.innerHTML = CrudModule.emptyState('Belum ada catatan kehadiran untuk periode ini.');
+
+                const rows = rData.map(i => `<tr>
+                    <td data-label="Santri"><a href="#" class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td>
+                    <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td>
+                    <td data-label="Hadir"><span class="badge green">${i.hadir}</span></td>
+                    <td data-label="Izin"><span class="badge blue">${i.izin}</span></td>
+                    <td data-label="Sakit"><span class="badge yellow">${i.sakit}</span></td>
+                    <td data-label="Alpha"><span class="badge red">${i.alpha}</span></td>
+                    <td data-label="% Hadir"><strong style="color:${i.persen<75?'var(--danger)':i.persen<90?'var(--warning)':'var(--success)'}">${i.persen}%</strong></td>
+                </tr>`).join('');
+                w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr><th>Nama Santri</th><th>Kelas</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>% Hadir</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+            },
+            exportExcel: () => {
+                if(!ViewRekapKehadiran.lastData || !ViewRekapKehadiran.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
+                const headers = ['Nama Santri','Kelas','Hadir','Izin','Sakit','Alpha','% Kehadiran'];
+                const rows = ViewRekapKehadiran.lastData.map(i => [i.nama, i.kelas, i.hadir, i.izin, i.sakit, i.alpha, `${i.persen}%`]);
+                ExportUtil.toCSV(`Rekap_Kehadiran_${ViewRekapKehadiran.tab}_${Utils.getTodayYMD()}.csv`, headers, rows);
+                UI.showToast('File Excel (CSV) berhasil diunduh');
+            }
+        };
+
         const ViewPengaturan = {
             render: () => {
                 const t = localStorage.getItem('sips_theme') || 'light';
-                const pengaturan = Storage.get('pengaturan');
-                const periodeInfo = pengaturan.periodeMulai
-                    ? `Periode poin aktif berjalan sejak <strong>${Utils.formatDate(pengaturan.periodeMulai)}</strong>. Pelanggaran sebelum tanggal ini tidak dihitung ke total poin aktif, tapi tetap bisa dilihat di menu Riwayat.`
-                    : `Belum pernah direset — total poin dihitung sejak data pertama kali diinput.`;
                 document.getElementById('mainContent').innerHTML = `
                     <div class="page-header"><h2 class="page-title">Pengaturan</h2><p class="page-subtitle">Sistem, Tampilan & Manajemen Data PWA v1.0</p></div>
                     
@@ -1507,9 +1735,8 @@
                     </div>
 
                     <div class="card card-body" style="max-width: 600px; margin-bottom: 24px">
-                        <h3 style="font-size: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Periode Poin</h3>
-                        <p style="font-size:13px; color:var(--text-muted); margin-bottom: 16px;">${periodeInfo}</p>
-                        <button class="btn btn-outline" onclick="ViewPengaturan.periodeBaru()" style="justify-content:flex-start"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Mulai Periode Baru (Reset Poin Aktif)</button>
+                        <h3 style="font-size: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Siklus Poin Pembinaan</h3>
+                        <p style="font-size:13px; color:var(--text-muted); margin-bottom: 0;">Poin pelanggaran aktif dihitung otomatis per pekan berjalan, mulai hari <strong>Minggu</strong> s.d. <strong>Sabtu</strong>. Setiap pekan berikutnya (hari Minggu), hitungan poin otomatis dimulai lagi dari 0 — tidak perlu direset manual. Seluruh riwayat lama tetap tersimpan dan bisa dilihat kapan saja di menu Riwayat &amp; Rekap.</p>
                     </div>
 
                     <div class="card card-body" style="max-width: 600px; margin-bottom: 24px">
@@ -1525,15 +1752,6 @@
                 `;
             },
             setTheme: (t) => { document.documentElement.setAttribute('data-theme', t); localStorage.setItem('sips_theme', t); ViewPengaturan.updateThemeIcon(); UI.showToast(t === 'dark' ? 'Mode gelap diaktifkan.' : 'Mode terang diaktifkan.'); },
-            periodeBaru: () => {
-                UI.confirmDialog('Mulai Periode Baru', 'Total poin aktif seluruh santri akan dihitung ulang mulai hari ini (jadi 0). Semua riwayat pelanggaran lama <strong>tetap tersimpan</strong> dan bisa dilihat di menu Riwayat. Lanjutkan?', 'Ya, Mulai Periode Baru', 'btn-danger', () => {
-                    const pengaturan = Storage.get('pengaturan');
-                    pengaturan.periodeMulai = Utils.getTodayYMD();
-                    Storage.set('pengaturan', pengaturan);
-                    UI.showToast('Periode baru dimulai. Poin aktif direset.');
-                    ViewPengaturan.render();
-                });
-            },
             toggleTheme: () => { const cur = localStorage.getItem('sips_theme') || 'light'; ViewPengaturan.setTheme(cur === 'light' ? 'dark' : 'light'); if(Views.getActive() === 'pengaturan') ViewPengaturan.render(); },
             updateThemeIcon: () => { const t = localStorage.getItem('sips_theme') || 'light'; const btn = document.getElementById('themeToggle'); if(btn) btn.textContent = t === 'dark' ? '🌙' : '☀️'; },
             backup: () => {
@@ -1570,7 +1788,7 @@
         const Views = (function() {
             let active = 'dashboard';
             let history = []; // stack navigasi untuk tombol "Kembali"
-            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render, prestasiKategori: MasterPrestasiKategori.render, inputPrestasi: ViewInputPrestasi.render, riwayatPrestasi: ViewRiwayatPrestasi.render, akademikHafalan: ViewAkademikHafalan.render };
+            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render, prestasiKategori: MasterPrestasiKategori.render, inputPrestasi: ViewInputPrestasi.render, riwayatPrestasi: ViewRiwayatPrestasi.render, akademikHafalan: ViewAkademikHafalan.render, absen: ViewAbsen.render, rekapKehadiran: ViewRekapKehadiran.render };
             
             const load = (v, opts = {}) => {
                 if(!m[v]) return;
@@ -1579,6 +1797,8 @@
                 injectBackButton();
             };
             const goBack = () => {
+                const modalOverlay = document.getElementById('modalOverlay');
+                if(modalOverlay && modalOverlay.classList.contains('active')) { UI.closeModal(); return; } // tutup detail/modal dulu, jangan pindah halaman
                 const prev = history.pop() || 'dashboard';
                 setActiveMenu(prev); load(prev, { isBack: true });
             };
@@ -1621,6 +1841,13 @@
             // Exit Trap (Back Button Handler)
             window.history.pushState({ noBack: true }, ''); // Init state
             window.addEventListener('popstate', () => {
+                const modalOverlay = document.getElementById('modalOverlay');
+                if(modalOverlay && modalOverlay.classList.contains('active')) {
+                    // Kalau ada modal/detail terbuka, tombol back cukup menutup modal itu -- tetap di halaman yang sama (Riwayat/Rekap/dll)
+                    UI.closeModal();
+                    window.history.pushState({ noBack: true }, ''); // Re-push trap
+                    return;
+                }
                 if(Views.getActive() === 'dashboard') {
                     window.history.pushState({ noBack: true }, ''); // Re-push trap
                     UI.confirmDialog('Keluar Aplikasi', 'Keluar dari aplikasi SIPS?', 'Ya, Keluar', 'btn-danger', () => {
@@ -1628,7 +1855,7 @@
                         window.history.back(); // Let OS handle exit
                     });
                 } else {
-                    Views.setActiveMenu('dashboard'); Views.load('dashboard');
+                    Views.goBack(); // pakai riwayat navigasi asli (tetap di halaman sebelumnya), bukan paksa ke Dashboard
                     window.history.pushState({ noBack: true }, ''); // Re-push trap
                 }
             });
