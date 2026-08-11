@@ -6,7 +6,7 @@
  * (HTML/manifest/ikon) supaya aplikasi bisa dibuka tanpa internet.
  */
 
-const CACHE_NAME = 'sips-cache-v6'; // Naikkan angka versi ini setiap kali ada update besar pada index.html
+const CACHE_NAME = 'sips-cache-v7'; // Naikkan angka versi ini setiap kali ada update besar pada index.html
 
 // Sesuaikan path ini jika nama/lokasi file berbeda di server Anda
 const APP_SHELL = [
