@@ -287,7 +287,8 @@
 
             <div class="menu-group">
                 <div class="menu-group-title">Perkembangan Santri</div>
-                <a class="menu-item" data-view="akademikHafalan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Akademik & Hafalan</a>
+                <a class="menu-item" data-view="akademikHafalan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Akademik & Ziyadah</a>
+                <a class="menu-item" data-view="rekapZiyadah"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg> Rekap Ziyadah</a>
             </div>
 
             <div class="menu-group">
@@ -380,7 +381,7 @@
 
         // --- 2. STORAGE MANAGEMENT (AUTO SAVE) ---
         const Storage = (function() {
-            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], kehadiran: [], pengaturan: { tema: 'light', periodeMulai: null } };
+            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], kehadiran: [], jadwalZiyadah: [], pengaturan: { tema: 'light', periodeMulai: null } };
             
             const init = () => {
                 Object.keys(SCHEMA).forEach(k => { if (!localStorage.getItem(`sips_${k}`)) set(k, SCHEMA[k]); });
@@ -525,6 +526,7 @@
 
                 const bulanIni = Utils.getMonthRange(0);
                 const absen = AbsenLogic.getRingkasan(sId, bulanIni.start, bulanIni.end);
+                const ziyadahBulanIni = Storage.get('hafalan').filter(h => h.santriId === sId && h.jenis === 'Ziyadah' && Utils.inRange(h.tanggal, bulanIni.start, bulanIni.end)).reduce((sum,h) => sum + (parseInt(h.jumlahAyat)||0), 0);
 
                 UI.openModal(`
                     <div class="modal-header"><div class="modal-title">Detail Santri</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
@@ -542,6 +544,10 @@
                             <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:110px">
                                 <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">POIN PRESTASI</div>
                                 <div style="font-size:28px; font-weight:700; color:var(--success)">${prestasiPts}</div>
+                            </div>
+                            <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:110px">
+                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">📖 AYAT ZIYADAH BLN INI</div>
+                                <div style="font-size:28px; font-weight:700; color:var(--primary)">${ziyadahBulanIni}</div>
                             </div>
                         </div>
                         <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px">
@@ -1525,32 +1531,82 @@
         // ================= AKADEMIK & HAFALAN =================
         const ViewAkademikHafalan = {
             tab: 'akademik',
+            jenisFilter: '',
             render: () => {
                 document.getElementById('mainContent').innerHTML = `
-                    <div class="page-header"><h2 class="page-title">Akademik & Hafalan</h2><p class="page-subtitle">Catat perkembangan nilai pelajaran dan hafalan Al-Qur'an santri.</p></div>
+                    <div class="page-header"><h2 class="page-title">Akademik & Ziyadah</h2><p class="page-subtitle">Catat perkembangan nilai pelajaran dan setoran Ziyadah/Muroja'ah Al-Qur'an santri.</p></div>
                     <div class="tabs">
                         <button class="tab-btn ${ViewAkademikHafalan.tab==='akademik'?'active':''}" onclick="ViewAkademikHafalan.setTab('akademik')">📋 Nilai Akademik</button>
-                        <button class="tab-btn ${ViewAkademikHafalan.tab==='hafalan'?'active':''}" onclick="ViewAkademikHafalan.setTab('hafalan')">📖 Hafalan Al-Qur'an</button>
+                        <button class="tab-btn ${ViewAkademikHafalan.tab==='hafalan'?'active':''}" onclick="ViewAkademikHafalan.setTab('hafalan')">📖 Ziyadah & Muroja'ah</button>
                     </div>
+                    ${ViewAkademikHafalan.tab === 'hafalan' ? ViewAkademikHafalan.renderJadwalCard() : ''}
                     <div class="toolbar">
-                        <div class="toolbar-left"><div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="ahSch" class="search-input" placeholder="Cari santri..."></div></div>
-                        <div class="toolbar-right"><button class="btn btn-primary" onclick="ViewAkademikHafalan.form()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Tambah</span></button></div>
+                        <div class="toolbar-left">
+                            <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="ahSch" class="search-input" placeholder="Cari santri..."></div>
+                            ${ViewAkademikHafalan.tab === 'hafalan' ? `<select id="ahJenis" class="filter-select"><option value="">Semua Jenis</option><option value="Ziyadah">Ziyadah</option><option value="Muroja'ah">Muroja'ah</option></select>` : ''}
+                        </div>
+                        <div class="toolbar-right">
+                            ${ViewAkademikHafalan.tab === 'hafalan' ? `<button class="btn btn-outline" onclick="ViewAkademikHafalan.formJadwal()">🗓️ Atur Jadwal</button>` : ''}
+                            <button class="btn btn-primary" onclick="ViewAkademikHafalan.form()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Tambah</span></button>
+                        </div>
                     </div>
                     <div id="tblAH"></div>
                 `;
                 ViewAkademikHafalan.loadTable();
                 document.getElementById('ahSch').addEventListener('input', ViewAkademikHafalan.loadTable);
+                if(ViewAkademikHafalan.tab === 'hafalan') document.getElementById('ahJenis').addEventListener('change', ViewAkademikHafalan.loadTable);
             },
             setTab: (t) => { ViewAkademikHafalan.tab = t; Views.load('akademikHafalan'); },
+
+            // --- Jadwal Ziyadah Mingguan (info referensi, bukan pembatas input) ---
+            renderJadwalCard: () => {
+                const jadwal = Storage.get('jadwalZiyadah').sort((a,b) => ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(a.hari) - ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(b.hari));
+                if(!jadwal.length) return `<div class="card card-body" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px"><p style="font-size:13px; color:var(--text-muted); margin:0">🗓️ Jadwal ziyadah mingguan belum diatur.</p><button class="btn btn-outline" onclick="ViewAkademikHafalan.formJadwal()">Atur Sekarang</button></div>`;
+                const chips = jadwal.map(j => `<span class="badge blue" style="font-size:12px">${j.hari}, ${j.jamMulai}–${j.jamSelesai}</span>`).join(' ');
+                return `<div class="card card-body" style="margin-bottom:20px"><div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:8px">🗓️ JADWAL ZIYADAH MINGGUAN</div><div style="display:flex; gap:8px; flex-wrap:wrap">${chips}</div></div>`;
+            },
+            formJadwal: () => {
+                const jadwal = Storage.get('jadwalZiyadah').sort((a,b) => ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(a.hari) - ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(b.hari));
+                const rows = jadwal.map(j => `<tr data-id="${j.id}"><td>${j.hari}</td><td>${j.jamMulai} – ${j.jamSelesai}</td><td style="text-align:right"><button type="button" class="btn-icon" style="color:var(--danger)" onclick="ViewAkademikHafalan.delJadwal('${j.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`).join('');
+                const hariOpts = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map(h => `<option>${h}</option>`).join('');
+                UI.openModal(`
+                    <div class="modal-header"><div class="modal-title">Jadwal Ziyadah Mingguan</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                    <div class="modal-body">
+                        <div class="card table-container" style="box-shadow:none; border:1px solid var(--border); margin-bottom:16px">
+                            ${jadwal.length ? `<table class="table" style="font-size:13px"><tbody id="jadwalZRows">${rows}</tbody></table>` : '<p class="empty-desc" style="padding:16px">Belum ada jadwal.</p>'}
+                        </div>
+                        <form id="frmJadwalZ" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
+                            <div class="form-group" style="margin:0; flex:1; min-width:100px"><label class="form-label">Hari</label><select id="jzHari" class="form-control">${hariOpts}</select></div>
+                            <div class="form-group" style="margin:0"><label class="form-label">Jam Mulai</label><input type="time" id="jzMulai" class="form-control" value="07:00" required></div>
+                            <div class="form-group" style="margin:0"><label class="form-label">Jam Selesai</label><input type="time" id="jzSelesai" class="form-control" value="07:45" required></div>
+                            <button type="submit" class="btn btn-primary">+ Tambah</button>
+                        </form>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="UI.closeModal()">Tutup</button></div>
+                `);
+                document.getElementById('frmJadwalZ').onsubmit = (e) => {
+                    e.preventDefault();
+                    Storage.insert('jadwalZiyadah', { hari: document.getElementById('jzHari').value, jamMulai: document.getElementById('jzMulai').value, jamSelesai: document.getElementById('jzSelesai').value });
+                    UI.showToast('Jadwal ditambahkan');
+                    ViewAkademikHafalan.formJadwal(); // refresh modal
+                };
+            },
+            delJadwal: (id) => { Storage.remove('jadwalZiyadah', id); UI.showToast('Jadwal dihapus'); ViewAkademikHafalan.formJadwal(); },
+
             loadTable: () => {
                 const q = document.getElementById('ahSch').value.toLowerCase();
                 const sMap = {}; Storage.get('santri').forEach(s => sMap[s.id] = s.nama);
                 const store = ViewAkademikHafalan.tab === 'akademik' ? 'akademik' : 'hafalan';
                 let data = Storage.get(store).map(d => ({...d, sNama: sMap[d.santriId]||'Tidak diketahui'}));
-                data = data.filter(d => d.sNama.toLowerCase().includes(q)).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+                data = data.filter(d => d.sNama.toLowerCase().includes(q));
+                if(ViewAkademikHafalan.tab === 'hafalan') {
+                    const jf = document.getElementById('ahJenis') ? document.getElementById('ahJenis').value : '';
+                    if(jf) data = data.filter(d => d.jenis === jf);
+                }
+                data.sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
 
                 const w = document.getElementById('tblAH');
-                if(!data.length) return w.innerHTML = CrudModule.emptyState(ViewAkademikHafalan.tab==='akademik' ? 'Belum ada catatan nilai akademik.' : 'Belum ada catatan hafalan.');
+                if(!data.length) return w.innerHTML = CrudModule.emptyState(ViewAkademikHafalan.tab==='akademik' ? 'Belum ada catatan nilai akademik.' : 'Belum ada catatan ziyadah/muroja\'ah.');
 
                 let rows, thead;
                 if(ViewAkademikHafalan.tab === 'akademik') {
@@ -1566,15 +1622,17 @@
                     thead = `<th>Tanggal</th><th>Santri</th><th>Mapel</th><th>Nilai</th><th>Predikat</th><th width="100">Aksi</th>`;
                 } else {
                     const statusBadge = {'Lancar':'green','Kurang Lancar':'yellow','Mengulang':'orange'};
+                    const jenisBadge = {'Ziyadah':'purple','Muroja\'ah':'blue'};
                     rows = data.map(d => `<tr data-id="${d.id}">
                         <td data-label="Tgl">${Utils.formatDate(d.tanggal)}</td>
                         <td data-label="Santri"><a class="clickable-name" onclick="AppLogic.showSantriDetail('${d.santriId}')">${Utils.escapeHTML(d.sNama)}</a></td>
-                        <td data-label="Materi">${Utils.escapeHTML(d.materi)}</td>
+                        <td data-label="Jenis"><span class="badge ${jenisBadge[d.jenis]||'gray'}">${d.jenis||'-'}</span></td>
+                        <td data-label="Surah & Ayat">${Utils.escapeHTML(d.materi)}</td>
+                        <td data-label="Jml Ayat"><strong>${d.jumlahAyat||'-'}</strong></td>
                         <td data-label="Status"><span class="badge ${statusBadge[d.status]||'gray'}">${d.status}</span></td>
-                        <td data-label="Catatan">${Utils.escapeHTML(d.catatan||'-')}</td>
                         <td data-label="Aksi">${CrudModule.btnAction(`ViewAkademikHafalan.form('${d.id}')`, `ViewAkademikHafalan.del('${d.id}')`)}</td>
                     </tr>`).join('');
-                    thead = `<th>Tanggal</th><th>Santri</th><th>Materi</th><th>Status</th><th>Catatan</th><th width="100">Aksi</th>`;
+                    thead = `<th>Tanggal</th><th>Santri</th><th>Jenis</th><th>Surah & Ayat</th><th>Jml Ayat</th><th>Status</th><th width="100">Aksi</th>`;
                 }
                 w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table></div>`;
             },
@@ -1600,20 +1658,26 @@
                     `;
                 } else {
                     const statusOpts = ['Lancar','Kurang Lancar','Mengulang'].map(s => `<option ${d && d.status===s?'selected':''}>${s}</option>`).join('');
+                    const jenisOpts = ['Ziyadah',"Muroja'ah"].map(j => `<option ${d && d.jenis===j?'selected':''}>${j}</option>`).join('');
                     bodyHtml = `
                         <div class="form-group"><label class="form-label">Santri</label><select id="ahSantri" class="form-control" required><option value="">--Pilih--</option>${sOpts}</select></div>
                         <div class="form-grid">
                             <div class="form-group"><label class="form-label">Tanggal</label><input type="date" id="ahTgl" class="form-control" required value="${d?d.tanggal:Utils.getTodayYMD()}"></div>
-                            <div class="form-group"><label class="form-label">Status</label><select id="ahStatus" class="form-control">${statusOpts}</select></div>
+                            <div class="form-group"><label class="form-label">Jenis</label><select id="ahJenisForm" class="form-control">${jenisOpts}</select></div>
                         </div>
-                        <div class="form-group"><label class="form-label">Juz / Surah</label><input type="text" id="ahMateri" class="form-control" placeholder="Contoh: Juz 30 / An-Naba 1-20" required value="${d?Utils.escapeHTML(d.materi):''}"></div>
+                        <div class="form-group"><label class="form-label">Surah</label><input type="text" id="ahSurah" class="form-control" placeholder="Contoh: An-Naba" required value="${d?Utils.escapeHTML(d.surah||''):''}"></div>
+                        <div class="form-grid">
+                            <div class="form-group"><label class="form-label">Ayat Dari</label><input type="number" id="ahAyatDari" class="form-control" min="1" required value="${d?d.ayatDari||'':''}"></div>
+                            <div class="form-group"><label class="form-label">Ayat Sampai</label><input type="number" id="ahAyatSampai" class="form-control" min="1" required value="${d?d.ayatSampai||'':''}"></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">Status</label><select id="ahStatus" class="form-control">${statusOpts}</select></div>
                         <div class="form-group"><label class="form-label">Catatan Penguji</label><textarea id="ahCatatan" class="form-control">${d?Utils.escapeHTML(d.catatan||''):''}</textarea></div>
                     `;
                 }
 
                 UI.openModal(`
                     <form onsubmit="ViewAkademikHafalan.save(event, '${id||''}')">
-                        <div class="modal-header"><div class="modal-title">${id?'Edit':'Tambah'} ${ViewAkademikHafalan.tab==='akademik'?'Nilai Akademik':'Hafalan'}</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                        <div class="modal-header"><div class="modal-title">${id?'Edit':'Tambah'} ${ViewAkademikHafalan.tab==='akademik'?'Nilai Akademik':'Setoran Ziyadah/Muroja\'ah'}</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
                         <div class="modal-body">${bodyHtml}</div>
                         <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="UI.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan</button></div>
                     </form>
@@ -1630,7 +1694,15 @@
                     data.predikat = nilai >= 90 ? 'A' : nilai >= 80 ? 'B' : nilai >= 70 ? 'C' : 'D';
                     data.catatan = document.getElementById('ahCatatan').value.trim();
                 } else {
-                    data.materi = document.getElementById('ahMateri').value.trim();
+                    const surah = document.getElementById('ahSurah').value.trim();
+                    const ayatDari = parseInt(document.getElementById('ahAyatDari').value) || 0;
+                    const ayatSampai = parseInt(document.getElementById('ahAyatSampai').value) || 0;
+                    data.jenis = document.getElementById('ahJenisForm').value;
+                    data.surah = surah;
+                    data.ayatDari = ayatDari;
+                    data.ayatSampai = ayatSampai;
+                    data.jumlahAyat = Math.max(0, ayatSampai - ayatDari + 1);
+                    data.materi = `${surah} : ${ayatDari}-${ayatSampai}`;
                     data.status = document.getElementById('ahStatus').value;
                     data.catatan = document.getElementById('ahCatatan').value.trim();
                 }
@@ -1740,6 +1812,101 @@
             }
         };
 
+        // ================= REKAP ZIYADAH (Leaderboard) =================
+        const ViewRekapZiyadah = {
+            tab: 'Mingguan',
+            weekOffset: 0,
+            monthOffset: 0,
+            render: () => {
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="page-header"><h2 class="page-title">🏆 Rekap Ziyadah</h2><p class="page-subtitle">Peringkat total ayat hafalan baru (Ziyadah) per santri. Muroja'ah tidak dihitung ke peringkat, tapi tetap ditampilkan sebagai info.</p></div>
+                    <div class="tabs">${['Mingguan', 'Bulanan'].map(t => `<button class="tab-btn ${ViewRekapZiyadah.tab === t ? 'active' : ''}" onclick="ViewRekapZiyadah.setTab('${t}')">${t}</button>`).join('')}</div>
+                    ${ViewRekapZiyadah.renderPeriodNav()}
+                    <div class="toolbar"><div class="toolbar-left">
+                        <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle></svg><input type="text" id="rzSch" class="search-input" placeholder="Cari santri..."></div>
+                        <select id="rzKelas" class="filter-select"><option value="">Semua Kelas</option>${Storage.get('kelas').sort((a,b)=>a.nama.localeCompare(b.nama)).map(k=>`<option value="${k.id}">${Utils.escapeHTML(k.nama)}</option>`).join('')}</select>
+                    </div>
+                    <div class="toolbar-right"><button class="btn btn-outline" onclick="ViewRekapZiyadah.exportExcel()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> Ekspor Excel</button></div></div>
+                    <div id="tblRekapZiyadah"></div>
+                `;
+                ViewRekapZiyadah.loadTable();
+                ['rzSch','rzKelas'].forEach(id => document.getElementById(id).addEventListener('input', ViewRekapZiyadah.loadTable));
+            },
+            setTab: (t) => { ViewRekapZiyadah.tab = t; ViewRekapZiyadah.weekOffset = 0; ViewRekapZiyadah.monthOffset = 0; Views.load('rekapZiyadah'); },
+            navPeriod: (dir) => {
+                if(ViewRekapZiyadah.tab === 'Mingguan') { if(ViewRekapZiyadah.weekOffset + dir <= 0) ViewRekapZiyadah.weekOffset += dir; }
+                else { if(ViewRekapZiyadah.monthOffset + dir <= 0) ViewRekapZiyadah.monthOffset += dir; }
+                Views.load('rekapZiyadah');
+            },
+            getRange: () => ViewRekapZiyadah.tab === 'Mingguan' ? Utils.getWeekRange(ViewRekapZiyadah.weekOffset) : Utils.getMonthRange(ViewRekapZiyadah.monthOffset),
+            renderPeriodNav: () => {
+                if(ViewRekapZiyadah.tab === 'Mingguan') {
+                    const { start, end } = Utils.getWeekRange(ViewRekapZiyadah.weekOffset);
+                    const weekNum = Utils.getWeekOfMonth(start);
+                    const isCurrent = ViewRekapZiyadah.weekOffset >= 0;
+                    return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                        <button class="btn btn-outline period-nav-btn" onclick="ViewRekapZiyadah.navPeriod(-1)">◀ Minggu Sebelumnya</button>
+                        <div style="text-align:center">
+                            <div style="font-weight:700">Minggu ke-${weekNum} • ${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekapZiyadah.weekOffset===0?' (Berjalan)':''}</div>
+                            <div style="font-size:12px;color:var(--text-muted)">${Utils.formatDateHari(Utils.toYMD(start))} — ${Utils.formatDateHari(Utils.toYMD(end))}</div>
+                        </div>
+                        <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekapZiyadah.navPeriod(1)">Minggu Berikutnya ▶</button>
+                    </div>`;
+                }
+                const { start } = Utils.getMonthRange(ViewRekapZiyadah.monthOffset);
+                const isCurrent = ViewRekapZiyadah.monthOffset >= 0;
+                return `<div class="card card-body period-nav" style="margin-bottom:20px">
+                    <button class="btn btn-outline period-nav-btn" onclick="ViewRekapZiyadah.navPeriod(-1)">◀ Bulan Sebelumnya</button>
+                    <div style="font-weight:700">${Utils.monthNames[start.getMonth()]} ${start.getFullYear()}${ViewRekapZiyadah.monthOffset===0?' (Berjalan)':''}</div>
+                    <button class="btn btn-outline period-nav-btn" ${isCurrent?'disabled':''} onclick="ViewRekapZiyadah.navPeriod(1)">Bulan Berikutnya ▶</button>
+                </div>`;
+            },
+            loadTable: () => {
+                const q = document.getElementById('rzSch').value.toLowerCase(), kelasFilter = document.getElementById('rzKelas').value;
+                const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
+                const range = ViewRekapZiyadah.getRange();
+                const hafalan = Storage.get('hafalan').filter(h => Utils.inRange(h.tanggal, range.start, range.end));
+
+                let rData = [];
+                Storage.get('santri').filter(s => s.status === 'Aktif' && s.nama.toLowerCase().includes(q) && (!kelasFilter || s.kelasId === kelasFilter)).forEach(s => {
+                    const recs = hafalan.filter(h => h.santriId === s.id);
+                    const ziyadah = recs.filter(h => h.jenis === 'Ziyadah');
+                    const murojaah = recs.filter(h => h.jenis === "Muroja'ah");
+                    const totalAyat = ziyadah.reduce((sum,h) => sum + (parseInt(h.jumlahAyat)||0), 0);
+                    if(totalAyat === 0 && murojaah.length === 0) return; // tidak ada aktivitas sama sekali di periode ini
+                    const tanggalSetor = [...new Set(ziyadah.map(h => h.tanggal))].sort();
+                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', totalAyat, jmlSetoran: ziyadah.length, jmlMurojaah: murojaah.length, tanggalSetor });
+                });
+                rData.sort((a,b) => b.totalAyat - a.totalAyat);
+
+                ViewRekapZiyadah.lastData = rData;
+                const w = document.getElementById('tblRekapZiyadah');
+                if(!rData.length) return w.innerHTML = CrudModule.emptyState('Belum ada catatan Ziyadah untuk periode ini.');
+
+                const medali = ['🥇','🥈','🥉'];
+                const rows = rData.map((i, idx) => `<tr style="${idx===0 && i.totalAyat>0 ? 'background:var(--badge-yellow-bg)' : ''}">
+                    <td data-label="Peringkat" style="font-weight:700; font-size:16px">${medali[idx] || (idx+1)}</td>
+                    <td data-label="Santri"><a class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td>
+                    <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td>
+                    <td data-label="Total Ayat Ziyadah"><strong style="font-size:16px; color:var(--primary)">${i.totalAyat}</strong> ayat</td>
+                    <td data-label="Jml Setoran">${i.jmlSetoran}x</td>
+                    <td data-label="Muroja'ah">${i.jmlMurojaah}x</td>
+                    <td data-label="Tanggal Setor" style="font-size:12px; color:var(--text-muted)">${i.tanggalSetor.map(t=>Utils.formatDate(t)).join(', ') || '-'}</td>
+                </tr>`).join('');
+                w.innerHTML = `
+                    ${rData[0] && rData[0].totalAyat > 0 ? `<div class="card card-body" style="margin-bottom:20px; text-align:center; background:linear-gradient(135deg, var(--badge-yellow-bg), var(--surface))"><div style="font-size:13px; font-weight:600; color:var(--text-muted)">🏆 JUARA ZIYADAH ${ViewRekapZiyadah.tab.toUpperCase()} INI</div><div style="font-size:22px; font-weight:800; margin-top:4px">${Utils.escapeHTML(rData[0].nama)}</div><div style="font-size:14px; color:var(--text-muted)">${rData[0].totalAyat} ayat dihafal</div></div>` : ''}
+                    <div class="card table-container"><table class="table"><thead><tr><th>#</th><th>Nama Santri</th><th>Kelas</th><th>Total Ayat Ziyadah</th><th>Jml Setoran</th><th>Muroja'ah</th><th>Tanggal Setor</th></tr></thead><tbody>${rows}</tbody></table></div>
+                `;
+            },
+            exportExcel: () => {
+                if(!ViewRekapZiyadah.lastData || !ViewRekapZiyadah.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
+                const headers = ['Peringkat','Nama Santri','Kelas','Total Ayat Ziyadah','Jumlah Setoran','Jumlah Muroja\'ah','Tanggal Setor'];
+                const rows = ViewRekapZiyadah.lastData.map((i, idx) => [idx+1, i.nama, i.kelas, i.totalAyat, i.jmlSetoran, i.jmlMurojaah, i.tanggalSetor.map(t=>Utils.formatDate(t)).join('; ')]);
+                ExportUtil.toCSV(`Rekap_Ziyadah_${ViewRekapZiyadah.tab}_${Utils.getTodayYMD()}.csv`, headers, rows);
+                UI.showToast('File Excel (CSV) berhasil diunduh');
+            }
+        };
+
         const ViewPengaturan = {
             render: () => {
                 const t = localStorage.getItem('sips_theme') || 'light';
@@ -1811,7 +1978,7 @@
         const Views = (function() {
             let active = 'dashboard';
             let history = []; // stack navigasi untuk tombol "Kembali"
-            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render, prestasiKategori: MasterPrestasiKategori.render, inputPrestasi: ViewInputPrestasi.render, riwayatPrestasi: ViewRiwayatPrestasi.render, akademikHafalan: ViewAkademikHafalan.render, absen: ViewAbsen.render, rekapKehadiran: ViewRekapKehadiran.render };
+            const m = { dashboard: ViewDashboard.render, kelas: MasterKelas.render, santri: MasterSantri.render, kategori: MasterKategori.render, penanganan: MasterPenanganan.render, input: ViewInput.render, riwayat: ViewRiwayat.render, rekap: ViewRekap.render, pengaturan: ViewPengaturan.render, prestasiKategori: MasterPrestasiKategori.render, inputPrestasi: ViewInputPrestasi.render, riwayatPrestasi: ViewRiwayatPrestasi.render, akademikHafalan: ViewAkademikHafalan.render, absen: ViewAbsen.render, rekapKehadiran: ViewRekapKehadiran.render, rekapZiyadah: ViewRekapZiyadah.render };
             
             const load = (v, opts = {}) => {
                 if(!m[v]) return;
