@@ -1558,27 +1558,42 @@
             },
             setTab: (t) => { ViewAkademikHafalan.tab = t; Views.load('akademikHafalan'); },
 
-            // --- Jadwal Ziyadah Mingguan (info referensi, bukan pembatas input) ---
+            // --- Jadwal Ziyadah Mingguan per Kelas (info referensi, bukan pembatas input) ---
             renderJadwalCard: () => {
-                const jadwal = Storage.get('jadwalZiyadah').sort((a,b) => ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(a.hari) - ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(b.hari));
-                if(!jadwal.length) return `<div class="card card-body" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px"><p style="font-size:13px; color:var(--text-muted); margin:0">🗓️ Jadwal ziyadah mingguan belum diatur.</p><button class="btn btn-outline" onclick="ViewAkademikHafalan.formJadwal()">Atur Sekarang</button></div>`;
-                const chips = jadwal.map(j => `<span class="badge blue" style="font-size:12px">${j.hari}, ${j.jamMulai}–${j.jamSelesai}</span>`).join(' ');
-                return `<div class="card card-body" style="margin-bottom:20px"><div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:8px">🗓️ JADWAL ZIYADAH MINGGUAN</div><div style="display:flex; gap:8px; flex-wrap:wrap">${chips}</div></div>`;
+                const jadwal = Storage.get('jadwalZiyadah');
+                if(!jadwal.length) return `<div class="card card-body" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px"><p style="font-size:13px; color:var(--text-muted); margin:0">🗓️ Jadwal ziyadah per kelas belum diatur.</p><button class="btn btn-outline" onclick="ViewAkademikHafalan.formJadwal()">Atur Sekarang</button></div>`;
+                const kMap = {}; Storage.get('kelas').forEach(k => kMap[k.id] = k.nama);
+                const hariUrut = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+                const byKelas = {};
+                jadwal.forEach(j => { (byKelas[j.kelasId] = byKelas[j.kelasId] || []).push(j); });
+                const blocks = Object.keys(byKelas).map(kelasId => {
+                    const items = byKelas[kelasId].sort((a,b) => hariUrut.indexOf(a.hari) - hariUrut.indexOf(b.hari));
+                    const chips = items.map(j => `<span class="badge blue" style="font-size:12px">${j.hari}, ${j.jamMulai}–${j.jamSelesai}${j.targetAyat ? ` • Target ${j.targetAyat} ayat` : ''}</span>`).join(' ');
+                    return `<div style="margin-bottom:8px"><div style="font-size:12px; font-weight:700; margin-bottom:4px">${Utils.escapeHTML(kMap[kelasId]||'Kelas?')}</div><div style="display:flex; gap:8px; flex-wrap:wrap">${chips}</div></div>`;
+                }).join('');
+                return `<div class="card card-body" style="margin-bottom:20px"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px"><div style="font-size:12px; font-weight:600; color:var(--text-muted)">🗓️ JADWAL ZIYADAH PER KELAS</div><button class="btn-icon" onclick="ViewAkademikHafalan.formJadwal()" title="Atur Jadwal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></div>${blocks}</div>`;
             },
             formJadwal: () => {
-                const jadwal = Storage.get('jadwalZiyadah').sort((a,b) => ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(a.hari) - ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(b.hari));
-                const rows = jadwal.map(j => `<tr data-id="${j.id}"><td>${j.hari}</td><td>${j.jamMulai} – ${j.jamSelesai}</td><td style="text-align:right"><button type="button" class="btn-icon" style="color:var(--danger)" onclick="ViewAkademikHafalan.delJadwal('${j.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`).join('');
-                const hariOpts = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map(h => `<option>${h}</option>`).join('');
+                const kelasList = Storage.get('kelas').sort((a,b) => a.nama.localeCompare(b.nama));
+                if(!kelasList.length) { UI.closeModal(); return UI.showToast('Tambahkan data Kelas terlebih dahulu.', 'error'); }
+                const kMap = {}; kelasList.forEach(k => kMap[k.id] = k.nama);
+                const hariUrut = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+                const jadwal = Storage.get('jadwalZiyadah').sort((a,b) => (kMap[a.kelasId]||'').localeCompare(kMap[b.kelasId]||'') || hariUrut.indexOf(a.hari) - hariUrut.indexOf(b.hari));
+                const rows = jadwal.map(j => `<tr data-id="${j.id}"><td>${Utils.escapeHTML(kMap[j.kelasId]||'-')}</td><td>${j.hari}</td><td>${j.jamMulai} – ${j.jamSelesai}</td><td>${j.targetAyat||'-'} ayat</td><td style="text-align:right"><button type="button" class="btn-icon" style="color:var(--danger)" onclick="ViewAkademikHafalan.delJadwal('${j.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`).join('');
+                const hariOpts = hariUrut.map(h => `<option>${h}</option>`).join('');
+                const kOpts = kelasList.map(k => `<option value="${k.id}">${Utils.escapeHTML(k.nama)}</option>`).join('');
                 UI.openModal(`
-                    <div class="modal-header"><div class="modal-title">Jadwal Ziyadah Mingguan</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
+                    <div class="modal-header"><div class="modal-title">Jadwal Ziyadah per Kelas</div><button type="button" class="modal-close" onclick="UI.closeModal()">✕</button></div>
                     <div class="modal-body">
                         <div class="card table-container" style="box-shadow:none; border:1px solid var(--border); margin-bottom:16px">
-                            ${jadwal.length ? `<table class="table" style="font-size:13px"><tbody id="jadwalZRows">${rows}</tbody></table>` : '<p class="empty-desc" style="padding:16px">Belum ada jadwal.</p>'}
+                            ${jadwal.length ? `<table class="table" style="font-size:13px"><thead><tr><th>Kelas</th><th>Hari</th><th>Jam</th><th>Target/Hari</th><th></th></tr></thead><tbody id="jadwalZRows">${rows}</tbody></table>` : '<p class="empty-desc" style="padding:16px">Belum ada jadwal.</p>'}
                         </div>
                         <form id="frmJadwalZ" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
+                            <div class="form-group" style="margin:0; flex:1; min-width:100px"><label class="form-label">Kelas</label><select id="jzKelas" class="form-control" required>${kOpts}</select></div>
                             <div class="form-group" style="margin:0; flex:1; min-width:100px"><label class="form-label">Hari</label><select id="jzHari" class="form-control">${hariOpts}</select></div>
                             <div class="form-group" style="margin:0"><label class="form-label">Jam Mulai</label><input type="time" id="jzMulai" class="form-control" value="07:00" required></div>
                             <div class="form-group" style="margin:0"><label class="form-label">Jam Selesai</label><input type="time" id="jzSelesai" class="form-control" value="07:45" required></div>
+                            <div class="form-group" style="margin:0; width:110px"><label class="form-label">Target Ayat</label><input type="number" id="jzTarget" class="form-control" min="1" placeholder="Cth: 5"></div>
                             <button type="submit" class="btn btn-primary">+ Tambah</button>
                         </form>
                     </div>
@@ -1586,7 +1601,13 @@
                 `);
                 document.getElementById('frmJadwalZ').onsubmit = (e) => {
                     e.preventDefault();
-                    Storage.insert('jadwalZiyadah', { hari: document.getElementById('jzHari').value, jamMulai: document.getElementById('jzMulai').value, jamSelesai: document.getElementById('jzSelesai').value });
+                    Storage.insert('jadwalZiyadah', {
+                        kelasId: document.getElementById('jzKelas').value,
+                        hari: document.getElementById('jzHari').value,
+                        jamMulai: document.getElementById('jzMulai').value,
+                        jamSelesai: document.getElementById('jzSelesai').value,
+                        targetAyat: parseInt(document.getElementById('jzTarget').value) || null
+                    });
                     UI.showToast('Jadwal ditambahkan');
                     ViewAkademikHafalan.formJadwal(); // refresh modal
                 };
