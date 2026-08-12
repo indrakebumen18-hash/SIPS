@@ -381,7 +381,7 @@
 
         // --- 2. STORAGE MANAGEMENT (AUTO SAVE) ---
         const Storage = (function() {
-            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], kehadiran: [], jadwalZiyadah: [], pengaturan: { tema: 'light', periodeMulai: null } };
+            const SCHEMA = { kelas: [], santri: [], kategori: [], penanganan: [], pelanggaran: [], prestasiKategori: [], prestasi: [], akademik: [], hafalan: [], kehadiran: [], jadwalZiyadah: [], pengaturan: { tema: 'light', periodeMulai: null, lastAutoPrestasiDate: null } };
             
             const init = () => {
                 Object.keys(SCHEMA).forEach(k => { if (!localStorage.getItem(`sips_${k}`)) set(k, SCHEMA[k]); });
@@ -526,7 +526,7 @@
 
                 const bulanIni = Utils.getMonthRange(0);
                 const absen = AbsenLogic.getRingkasan(sId, bulanIni.start, bulanIni.end);
-                const ziyadahBulanIni = Storage.get('hafalan').filter(h => h.santriId === sId && h.jenis === 'Ziyadah' && Utils.inRange(h.tanggal, bulanIni.start, bulanIni.end)).reduce((sum,h) => sum + (parseInt(h.jumlahAyat)||0), 0);
+                const ziyadahBulanIni = Storage.get('hafalan').filter(h => h.santriId === sId && h.jenis === 'Ziyadah' && Utils.inRange(h.tanggal, bulanIni.start, bulanIni.end)).reduce((sum,h) => sum + (parseInt(h.jumlahBaris)||0), 0);
 
                 UI.openModal(`
                     <div class="modal-header"><div class="modal-title">Detail Santri</div><button class="modal-close" onclick="UI.closeModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
@@ -546,7 +546,7 @@
                                 <div style="font-size:28px; font-weight:700; color:var(--success)">${prestasiPts}</div>
                             </div>
                             <div style="text-align:center; background:var(--surface-hover); padding:16px; border-radius:var(--radius-md); min-width:110px">
-                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">📖 AYAT ZIYADAH BLN INI</div>
+                                <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px">📖 BARIS ZIYADAH BLN INI</div>
                                 <div style="font-size:28px; font-weight:700; color:var(--primary)">${ziyadahBulanIni}</div>
                             </div>
                         </div>
@@ -639,6 +639,64 @@
             };
 
             return { ensureAlphaKategori, upsert, hapus, getRingkasan, ALPHA_NAMA };
+        })();
+
+        // --- 4a-2. PRESTASI OTOMATIS: "Tidak Melakukan Pelanggaran" ---
+        // Dicocokkan ke kategori prestasi bernama persis "Tidak Melakukan Pelanggaran" (tanpa memandang huruf besar/kecil) yang dibuat sendiri oleh admin di Master > Kategori Prestasi.
+        // Poinnya mengikuti apa pun yang diatur admin di kategori tsb.
+        const AutoPrestasiLogic = (function() {
+            const NAMA_KATEGORI = 'tidak melakukan pelanggaran';
+
+            const findKategori = () => Storage.get('prestasiKategori').find(k => k.nama.trim().toLowerCase() === NAMA_KATEGORI);
+
+            // Proses 1 tanggal yang sudah lewat/"closed": santri aktif yang sama sekali tidak punya pelanggaran hari itu otomatis dapat prestasi.
+            const prosesTanggal = (dateStr) => {
+                const kat = findKategori();
+                if(!kat) return;
+                const santriAktif = Storage.get('santri').filter(s => s.status === 'Aktif');
+                const santriMelanggar = new Set(Storage.get('pelanggaran').filter(p => p.tanggal === dateStr).map(p => p.santriId));
+                const prestasiAda = Storage.get('prestasi');
+                santriAktif.forEach(s => {
+                    if(santriMelanggar.has(s.id)) return;
+                    const sudahDapat = prestasiAda.some(pr => pr.santriId === s.id && pr.tanggal === dateStr && pr.autoTidakMelanggar);
+                    if(sudahDapat) return;
+                    Storage.insert('prestasi', {
+                        tanggal: dateStr, santriId: s.id, kategoriId: kat.id, kategoriNama: kat.nama, kelompok: kat.kelompok, poin: kat.poin,
+                        catatan: 'Otomatis: tidak ada pelanggaran tercatat pada hari ini.', autoTidakMelanggar: true
+                    });
+                });
+            };
+
+            // Dipanggil sekali tiap app dibuka -- proses semua hari yang sudah lewat & belum diproses (hari ini belum diproses karena belum "selesai").
+            const prosesHariTertinggal = () => {
+                const pengaturan = Storage.get('pengaturan');
+                const todayYMD = Utils.getTodayYMD();
+                if(!pengaturan.lastAutoPrestasiDate) {
+                    // Pertama kali dipakai -- jangan proses riwayat lama, mulai dihitung dari besok saja.
+                    const kemarin = new Date(); kemarin.setDate(kemarin.getDate() - 1);
+                    pengaturan.lastAutoPrestasiDate = Utils.toYMD(kemarin);
+                    Storage.set('pengaturan', pengaturan);
+                    return;
+                }
+                let cursor = new Date(pengaturan.lastAutoPrestasiDate + 'T00:00:00'); cursor.setDate(cursor.getDate() + 1);
+                const todayDate = new Date(todayYMD + 'T00:00:00');
+                let lastProcessed = pengaturan.lastAutoPrestasiDate;
+                while(cursor < todayDate) {
+                    const dateStr = Utils.toYMD(cursor);
+                    prosesTanggal(dateStr);
+                    lastProcessed = dateStr;
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+                if(lastProcessed !== pengaturan.lastAutoPrestasiDate) { pengaturan.lastAutoPrestasiDate = lastProcessed; Storage.set('pengaturan', pengaturan); }
+            };
+
+            // Dipanggil tiap kali pelanggaran baru disimpan -- cabut prestasi otomatis yang mungkin sudah terlanjur diberikan untuk tanggal itu.
+            const reconcile = (santriId, tanggal) => {
+                const existing = Storage.get('prestasi').find(pr => pr.santriId === santriId && pr.tanggal === tanggal && pr.autoTidakMelanggar);
+                if(existing) Storage.remove('prestasi', existing.id);
+            };
+
+            return { prosesHariTertinggal, reconcile, findKategori };
         })();
 
         // --- 4b. EXPORT UTILITY (CSV/Excel & Print-to-PDF) ---
@@ -1074,10 +1132,11 @@
                         penangananId: pen.id, catatan: $('iCat').value.trim()
                     };
 
-                    if(ViewInput.editId) { Storage.update('pelanggaran', ViewInput.editId, data); UI.showToast('Data diubah'); Views.load('riwayat'); }
+                    if(ViewInput.editId) { Storage.update('pelanggaran', ViewInput.editId, data); AutoPrestasiLogic.reconcile(data.santriId, data.tanggal); UI.showToast('Data diubah'); Views.load('riwayat'); }
                     else {
                         data.status = 'Baru'; data.tindakan = ''; // field baru: status tindak lanjut per pelanggaran
                         Storage.insert('pelanggaran', data);
+                        AutoPrestasiLogic.reconcile(data.santriId, data.tanggal); // cabut prestasi "tidak melanggar" otomatis kalau ternyata sudah terlanjur diberikan utk tanggal ini
                         UI.showToast('Tersimpan otomatis');
                         $('iSantri').value=''; $('iKat').value=''; $('iCat').value=''; $('iSantri').dispatchEvent(new Event('change')); $('iKat').dispatchEvent(new Event('change'));
                         // Notifikasi eskalasi: hanya muncul kalau level penanganan naik dibanding sebelum pelanggaran ini dicatat
@@ -1649,11 +1708,11 @@
                         <td data-label="Santri"><a class="clickable-name" onclick="AppLogic.showSantriDetail('${d.santriId}')">${Utils.escapeHTML(d.sNama)}</a></td>
                         <td data-label="Jenis"><span class="badge ${jenisBadge[d.jenis]||'gray'}">${d.jenis||'-'}</span></td>
                         <td data-label="Surah & Ayat">${Utils.escapeHTML(d.materi)}</td>
-                        <td data-label="Jml Ayat"><strong>${d.jumlahAyat||'-'}</strong></td>
+                        <td data-label="Baris"><strong>${d.jumlahBaris||'-'}</strong></td>
                         <td data-label="Status"><span class="badge ${statusBadge[d.status]||'gray'}">${d.status}</span></td>
                         <td data-label="Aksi">${CrudModule.btnAction(`ViewAkademikHafalan.form('${d.id}')`, `ViewAkademikHafalan.del('${d.id}')`)}</td>
                     </tr>`).join('');
-                    thead = `<th>Tanggal</th><th>Santri</th><th>Jenis</th><th>Surah & Ayat</th><th>Jml Ayat</th><th>Status</th><th width="100">Aksi</th>`;
+                    thead = `<th>Tanggal</th><th>Santri</th><th>Jenis</th><th>Surah & Ayat</th><th>Baris</th><th>Status</th><th width="100">Aksi</th>`;
                 }
                 w.innerHTML = `<div class="card table-container"><table class="table"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table></div>`;
             },
@@ -1691,6 +1750,7 @@
                             <div class="form-group"><label class="form-label">Ayat Dari</label><input type="number" id="ahAyatDari" class="form-control" min="1" required value="${d?d.ayatDari||'':''}"></div>
                             <div class="form-group"><label class="form-label">Ayat Sampai</label><input type="number" id="ahAyatSampai" class="form-control" min="1" required value="${d?d.ayatSampai||'':''}"></div>
                         </div>
+                        <div class="form-group"><label class="form-label">Jumlah Baris <span style="font-weight:400; color:var(--text-muted)">(dasar penghitungan poin/leaderboard)</span></label><input type="number" id="ahBaris" class="form-control" min="1" required value="${d?d.jumlahBaris||'':''}" placeholder="Cth: 15"></div>
                         <div class="form-group"><label class="form-label">Status</label><select id="ahStatus" class="form-control">${statusOpts}</select></div>
                         <div class="form-group"><label class="form-label">Catatan Penguji</label><textarea id="ahCatatan" class="form-control">${d?Utils.escapeHTML(d.catatan||''):''}</textarea></div>
                     `;
@@ -1722,7 +1782,8 @@
                     data.surah = surah;
                     data.ayatDari = ayatDari;
                     data.ayatSampai = ayatSampai;
-                    data.jumlahAyat = Math.max(0, ayatSampai - ayatDari + 1);
+                    data.jumlahAyat = Math.max(0, ayatSampai - ayatDari + 1); // info saja, TIDAK dipakai untuk poin/leaderboard
+                    data.jumlahBaris = parseInt(document.getElementById('ahBaris').value) || 0; // ini yang dihitung ke poin/leaderboard
                     data.materi = `${surah} : ${ayatDari}-${ayatSampai}`;
                     data.status = document.getElementById('ahStatus').value;
                     data.catatan = document.getElementById('ahCatatan').value.trim();
@@ -1840,7 +1901,7 @@
             monthOffset: 0,
             render: () => {
                 document.getElementById('mainContent').innerHTML = `
-                    <div class="page-header"><h2 class="page-title">🏆 Rekap Ziyadah</h2><p class="page-subtitle">Peringkat total ayat hafalan baru (Ziyadah) per santri. Muroja'ah tidak dihitung ke peringkat, tapi tetap ditampilkan sebagai info.</p></div>
+                    <div class="page-header"><h2 class="page-title">🏆 Rekap Ziyadah</h2><p class="page-subtitle">Peringkat total baris hafalan baru (Ziyadah) per santri — poin dihitung dari jumlah baris, bukan ayat. Muroja'ah tidak dihitung ke peringkat, tapi tetap ditampilkan sebagai info.</p></div>
                     <div class="tabs">${['Mingguan', 'Bulanan'].map(t => `<button class="tab-btn ${ViewRekapZiyadah.tab === t ? 'active' : ''}" onclick="ViewRekapZiyadah.setTab('${t}')">${t}</button>`).join('')}</div>
                     ${ViewRekapZiyadah.renderPeriodNav()}
                     <div class="toolbar"><div class="toolbar-left">
@@ -1893,36 +1954,38 @@
                     const recs = hafalan.filter(h => h.santriId === s.id);
                     const ziyadah = recs.filter(h => h.jenis === 'Ziyadah');
                     const murojaah = recs.filter(h => h.jenis === "Muroja'ah");
+                    const totalBaris = ziyadah.reduce((sum,h) => sum + (parseInt(h.jumlahBaris)||0), 0);
                     const totalAyat = ziyadah.reduce((sum,h) => sum + (parseInt(h.jumlahAyat)||0), 0);
-                    if(totalAyat === 0 && murojaah.length === 0) return; // tidak ada aktivitas sama sekali di periode ini
+                    if(totalBaris === 0 && murojaah.length === 0) return; // tidak ada aktivitas sama sekali di periode ini
                     const tanggalSetor = [...new Set(ziyadah.map(h => h.tanggal))].sort();
-                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', totalAyat, jmlSetoran: ziyadah.length, jmlMurojaah: murojaah.length, tanggalSetor });
+                    rData.push({ id: s.id, nama: s.nama, kelas: kMap[s.kelasId]||'-', totalBaris, totalAyat, jmlSetoran: ziyadah.length, jmlMurojaah: murojaah.length, tanggalSetor });
                 });
-                rData.sort((a,b) => b.totalAyat - a.totalAyat);
+                rData.sort((a,b) => b.totalBaris - a.totalBaris);
 
                 ViewRekapZiyadah.lastData = rData;
                 const w = document.getElementById('tblRekapZiyadah');
                 if(!rData.length) return w.innerHTML = CrudModule.emptyState('Belum ada catatan Ziyadah untuk periode ini.');
 
                 const medali = ['🥇','🥈','🥉'];
-                const rows = rData.map((i, idx) => `<tr style="${idx===0 && i.totalAyat>0 ? 'background:var(--badge-yellow-bg)' : ''}">
+                const rows = rData.map((i, idx) => `<tr style="${idx===0 && i.totalBaris>0 ? 'background:var(--badge-yellow-bg)' : ''}">
                     <td data-label="Peringkat" style="font-weight:700; font-size:16px">${medali[idx] || (idx+1)}</td>
                     <td data-label="Santri"><a class="clickable-name" onclick="AppLogic.showSantriDetail('${i.id}')">${Utils.escapeHTML(i.nama)}</a></td>
                     <td data-label="Kelas">${Utils.escapeHTML(i.kelas)}</td>
-                    <td data-label="Total Ayat Ziyadah"><strong style="font-size:16px; color:var(--primary)">${i.totalAyat}</strong> ayat</td>
+                    <td data-label="Total Baris (Poin)"><strong style="font-size:16px; color:var(--primary)">${i.totalBaris}</strong> baris</td>
+                    <td data-label="Total Ayat" style="color:var(--text-muted)">${i.totalAyat} ayat</td>
                     <td data-label="Jml Setoran">${i.jmlSetoran}x</td>
                     <td data-label="Muroja'ah">${i.jmlMurojaah}x</td>
                     <td data-label="Tanggal Setor" style="font-size:12px; color:var(--text-muted)">${i.tanggalSetor.map(t=>Utils.formatDate(t)).join(', ') || '-'}</td>
                 </tr>`).join('');
                 w.innerHTML = `
-                    ${rData[0] && rData[0].totalAyat > 0 ? `<div class="card card-body" style="margin-bottom:20px; text-align:center; background:linear-gradient(135deg, var(--badge-yellow-bg), var(--surface))"><div style="font-size:13px; font-weight:600; color:var(--text-muted)">🏆 JUARA ZIYADAH ${ViewRekapZiyadah.tab.toUpperCase()} INI</div><div style="font-size:22px; font-weight:800; margin-top:4px">${Utils.escapeHTML(rData[0].nama)}</div><div style="font-size:14px; color:var(--text-muted)">${rData[0].totalAyat} ayat dihafal</div></div>` : ''}
-                    <div class="card table-container"><table class="table"><thead><tr><th>#</th><th>Nama Santri</th><th>Kelas</th><th>Total Ayat Ziyadah</th><th>Jml Setoran</th><th>Muroja'ah</th><th>Tanggal Setor</th></tr></thead><tbody>${rows}</tbody></table></div>
+                    ${rData[0] && rData[0].totalBaris > 0 ? `<div class="card card-body" style="margin-bottom:20px; text-align:center; background:linear-gradient(135deg, var(--badge-yellow-bg), var(--surface))"><div style="font-size:13px; font-weight:600; color:var(--text-muted)">🏆 JUARA ZIYADAH ${ViewRekapZiyadah.tab.toUpperCase()} INI</div><div style="font-size:22px; font-weight:800; margin-top:4px">${Utils.escapeHTML(rData[0].nama)}</div><div style="font-size:14px; color:var(--text-muted)">${rData[0].totalBaris} baris dihafal</div></div>` : ''}
+                    <div class="card table-container"><table class="table"><thead><tr><th>#</th><th>Nama Santri</th><th>Kelas</th><th>Total Baris (Poin)</th><th>Total Ayat</th><th>Jml Setoran</th><th>Muroja'ah</th><th>Tanggal Setor</th></tr></thead><tbody>${rows}</tbody></table></div>
                 `;
             },
             exportExcel: () => {
                 if(!ViewRekapZiyadah.lastData || !ViewRekapZiyadah.lastData.length) return UI.showToast('Tidak ada data untuk diekspor.', 'error');
-                const headers = ['Peringkat','Nama Santri','Kelas','Total Ayat Ziyadah','Jumlah Setoran','Jumlah Muroja\'ah','Tanggal Setor'];
-                const rows = ViewRekapZiyadah.lastData.map((i, idx) => [idx+1, i.nama, i.kelas, i.totalAyat, i.jmlSetoran, i.jmlMurojaah, i.tanggalSetor.map(t=>Utils.formatDate(t)).join('; ')]);
+                const headers = ['Peringkat','Nama Santri','Kelas','Total Baris (Poin)','Total Ayat','Jumlah Setoran','Jumlah Muroja\'ah','Tanggal Setor'];
+                const rows = ViewRekapZiyadah.lastData.map((i, idx) => [idx+1, i.nama, i.kelas, i.totalBaris, i.totalAyat, i.jmlSetoran, i.jmlMurojaah, i.tanggalSetor.map(t=>Utils.formatDate(t)).join('; ')]);
                 ExportUtil.toCSV(`Rekap_Ziyadah_${ViewRekapZiyadah.tab}_${Utils.getTodayYMD()}.csv`, headers, rows);
                 UI.showToast('File Excel (CSV) berhasil diunduh');
             }
@@ -2029,6 +2092,7 @@
         // --- APP BOOTSTRAP ---
         document.addEventListener('DOMContentLoaded', () => {
             Storage.init();
+            AutoPrestasiLogic.prosesHariTertinggal(); // cek & beri prestasi otomatis "Tidak Melakukan Pelanggaran" untuk hari-hari yang sudah lewat
             
             // Apply Theme
             const t = localStorage.getItem('sips_theme') || 'light'; document.documentElement.setAttribute('data-theme', t);
